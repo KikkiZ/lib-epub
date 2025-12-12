@@ -1,0 +1,229 @@
+use thiserror::Error;
+
+/// Types of errors that can occur during EPUB processing
+///
+/// This enumeration defines the various error cases that can be encountered
+/// when parsing and processing EPUB files, including file format errors,
+/// missing resources, compression issues, etc.
+#[derive(Debug, Error)]
+pub enum EpubError {
+    /// ZIP archive related errors
+    ///
+    /// Errors occur when processing the ZIP structure of EPUB files,
+    /// such as file corruption, unreadability, etc.
+    #[error("Archive error: {source}")]
+    ArchiveError { source: zip::result::ZipError },
+
+    /// Data Decoding Error - Null dataw
+    ///
+    /// This error occurs when trying to decode an empty stream.
+    #[error("Decode error: The data is empty.")]
+    EmptyDataError,
+
+    /// XML parsing failure error
+    ///
+    /// This error usually only occurs when there is an exception in the XML parsing process, 
+    /// the event listener ends abnormally, resulting in the root node not being initialized. 
+    /// This exception may be caused by an incorrect XML file.
+    #[error(
+        "Failed parsing XML error: Unknown problems occurred during XML parsing, causing parsing failure."
+    )]
+    FailedParsingXml,
+
+    #[error("IO error: {source}")]
+    IOError { source: std::io::Error },
+
+    /// Missing required attribute error
+    ///
+    /// Triggered when an XML element in an EPUB file lacks the required
+    /// attributes required by the EPUB specification.
+    #[error(
+        "Missing required attribute: The \"{attribute}\" attribute is a must attribute for the \"{tag}\" element."
+    )]
+    MissingRequiredAttribute { tag: String, attribute: String },
+
+    /// Non-canonical EPUB structure error
+    ///
+    /// This error occurs when an EPUB file lacks some files or directory
+    /// structure that is required in EPUB specification.
+    #[error("Non-canonical epub: The \"{expected_file}\" file was not found.")]
+    NonCanonicalEpub { expected_file: String },
+
+    /// Non-canonical file structure error
+    ///
+    /// This error is triggered when the required XML elements in the
+    /// specification are missing from the EPUB file.
+    #[error("Non-canonical file: The \"{tag}\" elements was not found.")]
+    NonCanonicalFile { tag: String },
+
+    /// Missing supported file format error
+    ///
+    /// This error occurs when trying to get a resource but there isn't any supported file format.
+    /// It usually happens when there are no supported formats available in the fallback chain.
+    #[error(
+        "No supported file format: The fallback resource does not contain the file format you support."
+    )]
+    NoSupportedFileFormat,
+
+    /// Relative link leak error
+    ///
+    /// This error occurs when a relative path link is outside the scope
+    /// of an EPUB container, which is a security protection mechanism.
+    #[error("Relative link leakage: Path \"{path}\" is out of container range.")]
+    RealtiveLinkLeakage { path: String },
+
+    /// Unable to find the resource id error
+    ///
+    /// This error occurs when trying to get a resource by id but that id doesn't exist in the manifest.
+    #[error("Resource Id Not Exist: There is no resource item with id \"{id}\".")]
+    ResourceIdNotExist { id: String },
+
+    /// Unable to find the resource error
+    ///
+    /// This error occurs when an attempt is made to get a resource
+    /// but it does not exist in the EPUB container.
+    #[error("Resource not found: Unable to find resource from \"{resource}\".")]
+    ResourceNotFound { resource: String },
+
+    /// Unrecognized EPUB version error
+    ///
+    /// This error occurs when parsing epub files, the library cannot
+    /// directly or indirectly identify the epub version number.
+    #[error(
+        "Unrecognized EPUB version: Unable to identify version number and version characteristics from epub file"
+    )]
+    UnrecognizedEpubVersion,
+
+    /// Unsupported encryption method error
+    ///
+    /// This error is triggered when attempting to decrypt a resource that uses
+    /// an encryption method not supported by this library.
+    ///
+    /// Currently, this library only supports:
+    /// - IDPF Font Obfuscation
+    /// - Adobe Font Obfuscation
+    #[error("Unsupported encryption method: The \"{method}\" encryption method is not supported.")]
+    UnsupportedEncryptedMethod { method: String },
+
+    /// Unusable compression method error
+    ///
+    /// This error occurs when an EPUB file uses an unsupported compression method.
+    #[error(
+        "Unusable compression method: The \"{file}\" file uses the unsupported \"{method}\" compression method."
+    )]
+    UnusableCompressionMethod { file: String, method: String },
+
+    /// UTF-8 decoding error
+    ///
+    /// This error occurs when attempting to decode byte data into a UTF-8 string
+    /// but the data is not formatted correctly.
+    #[error("Decode error: {source}")]
+    Utf8DecodeError { source: std::string::FromUtf8Error },
+
+    /// UTF-16 decoding error
+    ///
+    /// This error occurs when attempting to decode byte data into a UTF-16 string
+    /// but the data is not formatted correctly.
+    #[error("Decode error: {source}")]
+    Utf16DecodeError { source: std::string::FromUtf16Error },
+
+    /// QuickXml error
+    ///
+    /// This error occurs when parsing XML data using the QuickXml library.
+    #[error("QuickXml error: {source}")]
+    QuickXmlError { source: quick_xml::Error },
+}
+
+impl From<zip::result::ZipError> for EpubError {
+    fn from(value: zip::result::ZipError) -> Self {
+        EpubError::ArchiveError { source: value }
+    }
+}
+
+impl From<quick_xml::Error> for EpubError {
+    fn from(value: quick_xml::Error) -> Self {
+        EpubError::QuickXmlError { source: value }
+    }
+}
+
+impl From<std::io::Error> for EpubError {
+    fn from(value: std::io::Error) -> Self {
+        EpubError::IOError { source: value }
+    }
+}
+
+impl From<std::string::FromUtf8Error> for EpubError {
+    fn from(value: std::string::FromUtf8Error) -> Self {
+        EpubError::Utf8DecodeError { source: value }
+    }
+}
+
+impl From<std::string::FromUtf16Error> for EpubError {
+    fn from(value: std::string::FromUtf16Error) -> Self {
+        EpubError::Utf16DecodeError { source: value }
+    }
+}
+
+#[cfg(test)]
+impl PartialEq for EpubError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::MissingRequiredAttribute {
+                    tag: l_tag,
+                    attribute: l_attribute,
+                },
+                Self::MissingRequiredAttribute {
+                    tag: r_tag,
+                    attribute: r_attribute,
+                },
+            ) => l_tag == r_tag && l_attribute == r_attribute,
+            (
+                Self::NonCanonicalEpub {
+                    expected_file: l_expected_file,
+                },
+                Self::NonCanonicalEpub {
+                    expected_file: r_expected_file,
+                },
+            ) => l_expected_file == r_expected_file,
+            (Self::NonCanonicalFile { tag: l_tag }, Self::NonCanonicalFile { tag: r_tag }) => {
+                l_tag == r_tag
+            }
+            (
+                Self::RealtiveLinkLeakage { path: l_path },
+                Self::RealtiveLinkLeakage { path: r_path },
+            ) => l_path == r_path,
+            (Self::ResourceIdNotExist { id: l_id }, Self::ResourceIdNotExist { id: r_id }) => {
+                l_id == r_id
+            }
+            (
+                Self::ResourceNotFound {
+                    resource: l_resource,
+                },
+                Self::ResourceNotFound {
+                    resource: r_resource,
+                },
+            ) => l_resource == r_resource,
+            (
+                Self::UnsupportedEncryptedMethod { method: l_method },
+                Self::UnsupportedEncryptedMethod { method: r_method },
+            ) => l_method == r_method,
+            (
+                Self::UnusableCompressionMethod {
+                    file: l_file,
+                    method: l_method,
+                },
+                Self::UnusableCompressionMethod {
+                    file: r_file,
+                    method: r_method,
+                },
+            ) => l_file == r_file && l_method == r_method,
+            (
+                Self::Utf8DecodeError { source: l_source },
+                Self::Utf8DecodeError { source: r_source },
+            ) => l_source == r_source,
+
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
