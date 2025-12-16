@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+#[cfg(feature = "builder")]
+use crate::utils::ELEMENT_IN_DC_NAMESPACE;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum EpubVersion {
     Version2_0,
@@ -46,6 +49,61 @@ pub struct MetadataItem {
     pub refined: Vec<MetadataRefinement>,
 }
 
+#[cfg(feature = "builder")]
+impl MetadataItem {
+    pub fn new(property: &str, value: &str) -> Self {
+        Self {
+            id: None,
+            property: property.to_string(),
+            value: value.to_string(),
+            lang: None,
+            refined: vec![],
+        }
+    }
+
+    pub fn with_id(&mut self, id: &str) -> &mut Self {
+        self.id = Some(id.to_string());
+        self
+    }
+
+    pub fn with_lang(&mut self, lang: &str) -> &mut Self {
+        self.lang = Some(lang.to_string());
+        self
+    }
+
+    pub fn append_refinement(&mut self, refine: MetadataRefinement) -> &mut Self {
+        if self.id.is_some() {
+            self.refined.push(refine);
+        } else {
+            // TODO: alert warning
+        }
+
+        self
+    }
+
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+
+    pub(crate) fn attributes(&self) -> Vec<(&str, &str)> {
+        let mut attributes = Vec::new();
+
+        if !ELEMENT_IN_DC_NAMESPACE.contains(&self.property.as_str()) {
+            attributes.push(("property", self.property.as_str()));
+        }
+
+        if let Some(id) = &self.id {
+            attributes.push(("id", id.as_str()));
+        };
+
+        if let Some(lang) = &self.lang {
+            attributes.push(("lang", lang.as_str()));
+        };
+
+        attributes
+    }
+}
+
 /// Represents a refinement of a metadata item in an EPUB 3.0 publication
 ///
 /// The `MetadataRefinement` structure provides additional details about a parent metadata item.
@@ -56,6 +114,8 @@ pub struct MetadataItem {
 /// or the scheme used for an identifier.
 #[derive(Debug, Clone)]
 pub struct MetadataRefinement {
+    pub refines: String,
+
     /// The refinement property name
     ///
     /// Specifies what aspect of the parent metadata item this refinement describes.
@@ -73,6 +133,50 @@ pub struct MetadataRefinement {
     /// Specifies the vocabulary or scheme used for the refinement value. For example,
     /// "marc:relators" for MARC relator codes, or "onix:codelist5" for ONIX roles.
     pub scheme: Option<String>,
+}
+
+#[cfg(feature = "builder")]
+impl MetadataRefinement {
+    pub fn new(refines: &str, property: &str, value: &str) -> Self {
+        Self {
+            refines: refines.to_string(),
+            property: property.to_string(),
+            value: value.to_string(),
+            lang: None,
+            scheme: None,
+        }
+    }
+
+    pub fn with_lang(&mut self, lang: &str) -> &mut Self {
+        self.lang = Some(lang.to_string());
+        self
+    }
+
+    pub fn with_scheme(&mut self, scheme: &str) -> &mut Self {
+        self.scheme = Some(scheme.to_string());
+        self
+    }
+
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+
+    pub(crate) fn attributes(&self) -> Vec<(&str, &str)> {
+        let mut attributes = Vec::new();
+
+        attributes.push(("refines", self.refines.as_str()));
+        attributes.push(("property", self.property.as_str()));
+
+        if let Some(lang) = &self.lang {
+            attributes.push(("lang", lang.as_str()));
+        };
+
+        if let Some(scheme) = &self.scheme {
+            attributes.push(("scheme", scheme.as_str()));
+        };
+
+        attributes
+    }
 }
 
 /// Represents a metadata link item in an EPUB publication
@@ -131,6 +235,9 @@ pub struct MetadataLinkItem {
 /// non-core media types) that may not be supported by all reading systems.
 #[derive(Debug, Clone)]
 pub struct ManifestItem {
+    /// The unique identifier for this resource item
+    pub id: String,
+
     /// The path to the resource file within the EPUB container
     ///
     /// This field contains the normalized path to the resource file relative to the
@@ -161,6 +268,66 @@ pub struct ManifestItem {
     pub fallback: Option<String>,
 }
 
+#[cfg(feature = "builder")]
+impl ManifestItem {
+    pub fn new(id: &str, path: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            path: PathBuf::from(path),
+            mime: String::new(),
+            properties: None,
+            fallback: None,
+        }
+    }
+
+    pub(crate) fn set_mime(self, mime: &str) -> Self {
+        Self {
+            id: self.id,
+            path: self.path,
+            mime: mime.to_string(),
+            properties: self.properties,
+            fallback: self.fallback,
+        }
+    }
+
+    pub fn append_property(&mut self, property: &str) -> &mut Self {
+        let new_properties = if let Some(properties) = &self.properties {
+            format!("{} {}", properties, property)
+        } else {
+            property.to_string()
+        };
+
+        self.properties = Some(new_properties);
+        self
+    }
+
+    pub fn with_fallback(&mut self, fallback: &str) -> &mut Self {
+        self.fallback = Some(fallback.to_string());
+        self
+    }
+
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+
+    pub fn attributes(&self) -> Vec<(&str, &str)> {
+        let mut attributes = Vec::new();
+
+        attributes.push(("id", self.id.as_str()));
+        attributes.push(("href", self.path.to_str().unwrap()));
+        attributes.push(("media-type", self.mime.as_str()));
+
+        if let Some(properties) = &self.properties {
+            attributes.push(("properties", properties.as_str()));
+        }
+
+        if let Some(fallback) = &self.fallback {
+            attributes.push(("fallback", fallback.as_str()));
+        }
+
+        attributes
+    }
+}
 /// Represents an item in the EPUB spine, defining the reading order of the publication
 ///
 /// The `SpineItem` structure represents a single item in the EPUB spine, which defines
@@ -171,7 +338,7 @@ pub struct ManifestItem {
 /// The spine is a crucial component of an EPUB publication as it determines the recommended
 /// reading order of content documents. Items can be marked as linear (part of the main reading
 /// flow) or non-linear (supplementary content that may be accessed out of sequence).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SpineItem {
     /// The ID reference to a manifest item
     ///
@@ -200,6 +367,60 @@ pub struct SpineItem {
     /// appendices, or other supplementary materials that readers might access
     /// on-demand rather than sequentially.
     pub linear: bool,
+}
+
+#[cfg(feature = "builder")]
+impl SpineItem {
+    pub fn new(idref: &str) -> Self {
+        Self {
+            idref: idref.to_string(),
+            id: None,
+            properties: None,
+            linear: true,
+        }
+    }
+
+    pub fn with_id(&mut self, id: &str) -> &mut Self {
+        self.id = Some(id.to_string());
+        self
+    }
+
+    pub fn append_property(&mut self, property: &str) -> &mut Self {
+        let new_properties = if let Some(properties) = &self.properties {
+            format!("{} {}", properties, property)
+        } else {
+            property.to_string()
+        };
+
+        self.properties = Some(new_properties);
+        self
+    }
+
+    pub fn set_linear(&mut self, linear: bool) -> &mut Self {
+        self.linear = linear;
+        self
+    }
+
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+
+    pub(crate) fn attributes(&self) -> Vec<(&str, &str)> {
+        let mut attributes = Vec::new();
+
+        attributes.push(("idref", self.idref.as_str()));
+        attributes.push(("linear", if self.linear { "yes" } else { "no" }));
+
+        if let Some(id) = &self.id {
+            attributes.push(("id", id.as_str()));
+        }
+
+        if let Some(properties) = &self.properties {
+            attributes.push(("properties", properties.as_str()));
+        }
+
+        attributes
+    }
 }
 
 /// Represents encryption information for EPUB resources
@@ -437,6 +658,41 @@ mod tests {
             };
 
             assert!(nav1 == nav2);
+        }
+    }
+
+    #[cfg(feature = "builder")]
+    #[test]
+    fn test_builder() {
+        use crate::types::{MetadataItem, MetadataRefinement};
+
+        let mut metadatas = Vec::new();
+
+        metadatas.push(
+            MetadataItem::new("dc:title", "Test Book")
+                .with_id("title")
+                .with_lang("en")
+                .append_refinement(
+                    MetadataRefinement::new("title", "title", "测试书籍")
+                        .with_lang("zh-CN")
+                        .build(),
+                )
+                .append_refinement(MetadataRefinement::new("title", "title", "テスト用の书籍"))
+                .build(),
+        );
+
+        metadatas.push(MetadataItem::new("dc:creator", "Test Author"));
+
+        metadatas.push(
+            MetadataItem::new("dc:identifier", "identifier")
+                .with_id("pub-id")
+                .build(),
+        );
+
+        assert_eq!(metadatas.len(), 3);
+
+        for metadata in metadatas.iter() {
+            println!("{:?}", metadata);
         }
     }
 }

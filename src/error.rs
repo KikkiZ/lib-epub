@@ -20,10 +20,16 @@ pub enum EpubError {
     #[error("Decode error: The data is empty.")]
     EmptyDataError,
 
+    #[cfg(feature = "builder")]
+    #[error("Epub builder error: {source}")]
+    EpubBuilderError {
+        source: crate::builder::EpubBuilderError,
+    },
+
     /// XML parsing failure error
     ///
-    /// This error usually only occurs when there is an exception in the XML parsing process, 
-    /// the event listener ends abnormally, resulting in the root node not being initialized. 
+    /// This error usually only occurs when there is an exception in the XML parsing process,
+    /// the event listener ends abnormally, resulting in the root node not being initialized.
     /// This exception may be caused by an incorrect XML file.
     #[error(
         "Failed parsing XML error: Unknown problems occurred during XML parsing, causing parsing failure."
@@ -161,6 +167,13 @@ impl From<std::string::FromUtf8Error> for EpubError {
 impl From<std::string::FromUtf16Error> for EpubError {
     fn from(value: std::string::FromUtf16Error) -> Self {
         EpubError::Utf16DecodeError { source: value }
+    }
+}
+
+#[cfg(feature = "builder")]
+impl From<crate::builder::EpubBuilderError> for EpubError {
+    fn from(value: crate::builder::EpubBuilderError) -> Self {
+        EpubError::EpubBuilderError { source: value }
     }
 }
 

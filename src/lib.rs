@@ -2,7 +2,8 @@
 
 pub(crate) mod utils;
 
-// pub mod builder;
+#[cfg(feature = "builder")]
+pub mod builder;
 pub mod epub;
 pub mod error;
 pub mod types;

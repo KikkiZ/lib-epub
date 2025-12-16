@@ -9,11 +9,16 @@ use log::warn;
 use zip::{ZipArchive, result::ZipError};
 
 use crate::{
-    error::EpubError, types::{EncryptionData, EpubVersion, ManifestItem, MetadataItem, MetadataLinkItem, MetadataRefinement, NavPoint, SpineItem}, utils::{
+    error::EpubError,
+    types::{
+        EncryptionData, EpubVersion, ManifestItem, MetadataItem, MetadataLinkItem,
+        MetadataRefinement, NavPoint, SpineItem,
+    },
+    utils::{
         DecodeBytes, NormalizeWhitespace, XmlElement, XmlReader, adobe_font_dencryption,
         check_realtive_link_leakage, compression_method_check, get_file_in_zip_archive,
         idpf_font_dencryption,
-    }
+    },
 };
 
 /// EPUB document parser, representing a loaded and parsed EPUB publication
@@ -310,8 +315,9 @@ impl<R: Read + Seek> EpubDoc<R> {
             let fallback = element.get_attr("fallback");
 
             resources.insert(
-                id,
+                id.clone(),
                 ManifestItem {
+                    id,
                     path: self.normalize_manifest_path(&path)?,
                     mime,
                     properties,
@@ -973,6 +979,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                     let value = value.to_string().normalize_whitespace();
 
                     MetadataRefinement {
+                        refines: id.clone().unwrap(),
                         property,
                         value,
                         lang: None,
@@ -1065,6 +1072,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                     let id = refines.strip_prefix("#").unwrap_or(&refines).to_string();
                     let scheme = element.get_attr("scheme");
                     let refinement = MetadataRefinement {
+                        refines: id.clone(),
                         property,
                         value,
                         lang,

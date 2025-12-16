@@ -5,6 +5,7 @@ use std::{
     path::PathBuf,
 };
 
+#[cfg(feature = "builder")]
 use chrono::Local;
 use quick_xml::{NsReader, events::Event};
 use sha1::{Digest, Sha1};
@@ -13,6 +14,29 @@ use zip::{CompressionMethod, ZipArchive};
 
 use crate::error::EpubError;
 
+#[cfg(feature = "builder")]
+pub const ELEMENT_IN_DC_NAMESPACE: std::sync::LazyLock<Vec<&str>> =
+    std::sync::LazyLock::new(|| {
+        vec![
+            "contributor",
+            "coverage",
+            "creator",
+            "date",
+            "description",
+            "format",
+            "identifier",
+            "language",
+            "publisher",
+            "relation",
+            "rights",
+            "source",
+            "subject",
+            "title",
+            "type",
+        ]
+    });
+
+#[cfg(feature = "builder")]
 /// Returns the current time with custom format
 pub fn local_time() -> String {
     Local::now().format("%Y-%m-%dT%H-%M-%S.%fU%z").to_string()
