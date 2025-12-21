@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 #[cfg(feature = "builder")]
-use crate::utils::ELEMENT_IN_DC_NAMESPACE;
+use crate::{builder::EpubBuilderError, error::EpubError, utils::ELEMENT_IN_DC_NAMESPACE};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum EpubVersion {
@@ -268,16 +268,24 @@ pub struct ManifestItem {
     pub fallback: Option<String>,
 }
 
+// TODO: 需要增加一个函数，用于处理绝对路径‘/’和相对opf路径，将相对路径转为绝对路径
 #[cfg(feature = "builder")]
 impl ManifestItem {
-    pub fn new(id: &str, path: &str) -> Self {
-        Self {
+    pub fn new(id: &str, path: &str) -> Result<Self, EpubError> {
+        if path.starts_with("../") {
+            return Err(EpubBuilderError::IllegalManifestPath {
+                manifest_id: id.to_string(),
+            }
+            .into());
+        }
+
+        Ok(Self {
             id: id.to_string(),
             path: PathBuf::from(path),
             mime: String::new(),
             properties: None,
             fallback: None,
-        }
+        })
     }
 
     pub(crate) fn set_mime(self, mime: &str) -> Self {
@@ -328,6 +336,7 @@ impl ManifestItem {
         attributes
     }
 }
+
 /// Represents an item in the EPUB spine, defining the reading order of the publication
 ///
 /// The `SpineItem` structure represents a single item in the EPUB spine, which defines
@@ -471,6 +480,37 @@ pub struct NavPoint {
     /// It can be `None` for navigation points that no relevant information was
     /// provided in the original data.
     pub play_order: Option<usize>,
+}
+
+#[cfg(feature = "builder")]
+impl NavPoint {
+    pub fn new(label: &str) -> Self {
+        Self {
+            label: label.to_string(),
+            content: None,
+            children: vec![],
+            play_order: None,
+        }
+    }
+
+    pub fn with_content(&mut self, content: &str) -> &mut Self {
+        self.content = Some(PathBuf::from(content));
+        self
+    }
+
+    pub fn append_child(&mut self, child: NavPoint) -> &mut Self {
+        self.children.push(child);
+        self
+    }
+
+    pub fn set_children(&mut self, children: Vec<NavPoint>) -> &mut Self {
+        self.children = children;
+        self
+    }
+
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
 }
 
 impl Ord for NavPoint {
@@ -662,37 +702,704 @@ mod tests {
     }
 
     #[cfg(feature = "builder")]
-    #[test]
-    fn test_builder() {
-        use crate::types::{MetadataItem, MetadataRefinement};
+    mod builder_tests {
+        mod metadata_item {
+            use crate::types::{MetadataItem, MetadataRefinement};
 
-        let mut metadatas = Vec::new();
+            #[test]
+            fn test_metadata_item_new() {
+                let metadata_item = MetadataItem::new("title", "EPUB Test Book");
 
-        metadatas.push(
-            MetadataItem::new("dc:title", "Test Book")
-                .with_id("title")
-                .with_lang("en")
-                .append_refinement(
-                    MetadataRefinement::new("title", "title", "测试书籍")
-                        .with_lang("zh-CN")
+                assert_eq!(metadata_item.property, "title");
+                assert_eq!(metadata_item.value, "EPUB Test Book");
+                assert_eq!(metadata_item.id, None);
+                assert_eq!(metadata_item.lang, None);
+                assert_eq!(metadata_item.refined.len(), 0);
+            }
+
+            #[test]
+            fn test_metadata_item_with_id() {
+                let mut metadata_item = MetadataItem::new("creator", "John Doe");
+                metadata_item.with_id("creator-1");
+
+                assert_eq!(metadata_item.property, "creator");
+                assert_eq!(metadata_item.value, "John Doe");
+                assert_eq!(metadata_item.id, Some("creator-1".to_string()));
+                assert_eq!(metadata_item.lang, None);
+                assert_eq!(metadata_item.refined.len(), 0);
+            }
+
+            #[test]
+            fn test_metadata_item_with_lang() {
+                let mut metadata_item = MetadataItem::new("title", "测试书籍");
+                metadata_item.with_lang("zh-CN");
+
+                assert_eq!(metadata_item.property, "title");
+                assert_eq!(metadata_item.value, "测试书籍");
+                assert_eq!(metadata_item.id, None);
+                assert_eq!(metadata_item.lang, Some("zh-CN".to_string()));
+                assert_eq!(metadata_item.refined.len(), 0);
+            }
+
+            #[test]
+            fn test_metadata_item_append_refinement() {
+                let mut metadata_item = MetadataItem::new("creator", "John Doe");
+                metadata_item.with_id("creator-1"); // ID is required for refinements
+
+                let refinement = MetadataRefinement::new("creator-1", "role", "author");
+                metadata_item.append_refinement(refinement);
+
+                assert_eq!(metadata_item.refined.len(), 1);
+                assert_eq!(metadata_item.refined[0].refines, "creator-1");
+                assert_eq!(metadata_item.refined[0].property, "role");
+                assert_eq!(metadata_item.refined[0].value, "author");
+            }
+
+            #[test]
+            fn test_metadata_item_append_refinement_without_id() {
+                let mut metadata_item = MetadataItem::new("title", "Test Book");
+                // No ID set
+
+                let refinement = MetadataRefinement::new("title", "title-type", "main");
+                metadata_item.append_refinement(refinement);
+
+                // Refinement should not be added because metadata item has no ID
+                assert_eq!(metadata_item.refined.len(), 0);
+            }
+
+            #[test]
+            fn test_metadata_item_build() {
+                let mut metadata_item = MetadataItem::new("identifier", "urn:isbn:1234567890");
+                metadata_item.with_id("pub-id").with_lang("en");
+
+                let built = metadata_item.build();
+
+                assert_eq!(built.property, "identifier");
+                assert_eq!(built.value, "urn:isbn:1234567890");
+                assert_eq!(built.id, Some("pub-id".to_string()));
+                assert_eq!(built.lang, Some("en".to_string()));
+                assert_eq!(built.refined.len(), 0);
+            }
+
+            #[test]
+            fn test_metadata_item_builder_chaining() {
+                let mut metadata_item = MetadataItem::new("title", "EPUB 3.3 Guide");
+                metadata_item.with_id("title").with_lang("en");
+
+                let refinement = MetadataRefinement::new("title", "title-type", "main");
+                metadata_item.append_refinement(refinement);
+
+                let built = metadata_item.build();
+
+                assert_eq!(built.property, "title");
+                assert_eq!(built.value, "EPUB 3.3 Guide");
+                assert_eq!(built.id, Some("title".to_string()));
+                assert_eq!(built.lang, Some("en".to_string()));
+                assert_eq!(built.refined.len(), 1);
+            }
+
+            #[test]
+            fn test_metadata_item_attributes_dc_namespace() {
+                let mut metadata_item = MetadataItem::new("title", "Test Book");
+                metadata_item.with_id("title-id");
+
+                let attributes = metadata_item.attributes();
+
+                // For DC namespace properties, no "property" attribute should be added
+                assert!(!attributes.iter().any(|(k, _)| k == &"property"));
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"id" && v == &"title-id")
+                );
+            }
+
+            #[test]
+            fn test_metadata_item_attributes_non_dc_namespace() {
+                let mut metadata_item = MetadataItem::new("meta", "value");
+                metadata_item.with_id("meta-id");
+
+                let attributes = metadata_item.attributes();
+
+                // For non-DC namespace properties, "property" attribute should be added
+                assert!(attributes.iter().any(|(k, _)| k == &"property"));
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"id" && v == &"meta-id")
+                );
+            }
+
+            #[test]
+            fn test_metadata_item_attributes_with_lang() {
+                let mut metadata_item = MetadataItem::new("title", "Test Book");
+                metadata_item.with_id("title-id").with_lang("en");
+
+                let attributes = metadata_item.attributes();
+
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"id" && v == &"title-id")
+                );
+                assert!(attributes.iter().any(|(k, v)| k == &"lang" && v == &"en"));
+            }
+        }
+
+        mod metadata_refinement {
+            use crate::types::MetadataRefinement;
+
+            #[test]
+            fn test_metadata_refinement_new() {
+                let refinement = MetadataRefinement::new("title", "title-type", "main");
+
+                assert_eq!(refinement.refines, "title");
+                assert_eq!(refinement.property, "title-type");
+                assert_eq!(refinement.value, "main");
+                assert_eq!(refinement.lang, None);
+                assert_eq!(refinement.scheme, None);
+            }
+
+            #[test]
+            fn test_metadata_refinement_with_lang() {
+                let mut refinement = MetadataRefinement::new("creator", "role", "author");
+                refinement.with_lang("en");
+
+                assert_eq!(refinement.refines, "creator");
+                assert_eq!(refinement.property, "role");
+                assert_eq!(refinement.value, "author");
+                assert_eq!(refinement.lang, Some("en".to_string()));
+                assert_eq!(refinement.scheme, None);
+            }
+
+            #[test]
+            fn test_metadata_refinement_with_scheme() {
+                let mut refinement = MetadataRefinement::new("creator", "role", "author");
+                refinement.with_scheme("marc:relators");
+
+                assert_eq!(refinement.refines, "creator");
+                assert_eq!(refinement.property, "role");
+                assert_eq!(refinement.value, "author");
+                assert_eq!(refinement.lang, None);
+                assert_eq!(refinement.scheme, Some("marc:relators".to_string()));
+            }
+
+            #[test]
+            fn test_metadata_refinement_build() {
+                let mut refinement = MetadataRefinement::new("title", "alternate-script", "テスト");
+                refinement.with_lang("ja").with_scheme("iso-15924");
+
+                let built = refinement.build();
+
+                assert_eq!(built.refines, "title");
+                assert_eq!(built.property, "alternate-script");
+                assert_eq!(built.value, "テスト");
+                assert_eq!(built.lang, Some("ja".to_string()));
+                assert_eq!(built.scheme, Some("iso-15924".to_string()));
+            }
+
+            #[test]
+            fn test_metadata_refinement_builder_chaining() {
+                let mut refinement = MetadataRefinement::new("creator", "file-as", "Doe, John");
+                refinement.with_lang("en").with_scheme("dcterms");
+
+                let built = refinement.build();
+
+                assert_eq!(built.refines, "creator");
+                assert_eq!(built.property, "file-as");
+                assert_eq!(built.value, "Doe, John");
+                assert_eq!(built.lang, Some("en".to_string()));
+                assert_eq!(built.scheme, Some("dcterms".to_string()));
+            }
+
+            #[test]
+            fn test_metadata_refinement_attributes() {
+                let mut refinement = MetadataRefinement::new("title", "title-type", "main");
+                refinement.with_lang("en").with_scheme("onix:codelist5");
+
+                let attributes = refinement.attributes();
+
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"refines" && v == &"title")
+                );
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"property" && v == &"title-type")
+                );
+                assert!(attributes.iter().any(|(k, v)| k == &"lang" && v == &"en"));
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"scheme" && v == &"onix:codelist5")
+                );
+            }
+
+            #[test]
+            fn test_metadata_refinement_attributes_optional_fields() {
+                let refinement = MetadataRefinement::new("creator", "role", "author");
+                let attributes = refinement.attributes();
+
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"refines" && v == &"creator")
+                );
+                assert!(
+                    attributes
+                        .iter()
+                        .any(|(k, v)| k == &"property" && v == &"role")
+                );
+
+                // Should not contain optional attributes when they are None
+                assert!(!attributes.iter().any(|(k, _)| k == &"lang"));
+                assert!(!attributes.iter().any(|(k, _)| k == &"scheme"));
+            }
+        }
+
+        mod manifest_item {
+            use std::path::PathBuf;
+
+            use crate::types::ManifestItem;
+
+            #[test]
+            fn test_manifest_item_new() {
+                let manifest_item = ManifestItem::new("cover", "images/cover.jpg");
+                assert!(manifest_item.is_ok());
+
+                let manifest_item = manifest_item.unwrap();
+                assert_eq!(manifest_item.id, "cover");
+                assert_eq!(manifest_item.path, PathBuf::from("images/cover.jpg"));
+                assert_eq!(manifest_item.mime, "");
+                assert_eq!(manifest_item.properties, None);
+                assert_eq!(manifest_item.fallback, None);
+            }
+
+            #[test]
+            fn test_manifest_item_append_property() {
+                let manifest_item = ManifestItem::new("nav", "nav.xhtml");
+                assert!(manifest_item.is_ok());
+
+                let mut manifest_item = manifest_item.unwrap();
+                manifest_item.append_property("nav");
+
+                assert_eq!(manifest_item.id, "nav");
+                assert_eq!(manifest_item.path, PathBuf::from("nav.xhtml"));
+                assert_eq!(manifest_item.mime, "");
+                assert_eq!(manifest_item.properties, Some("nav".to_string()));
+                assert_eq!(manifest_item.fallback, None);
+            }
+
+            #[test]
+            fn test_manifest_item_append_multiple_properties() {
+                let manifest_item = ManifestItem::new("content", "content.xhtml");
+                assert!(manifest_item.is_ok());
+
+                let mut manifest_item = manifest_item.unwrap();
+                manifest_item
+                    .append_property("nav")
+                    .append_property("scripted")
+                    .append_property("svg");
+
+                assert_eq!(
+                    manifest_item.properties,
+                    Some("nav scripted svg".to_string())
+                );
+            }
+
+            #[test]
+            fn test_manifest_item_with_fallback() {
+                let manifest_item = ManifestItem::new("image", "image.tiff");
+                assert!(manifest_item.is_ok());
+
+                let mut manifest_item = manifest_item.unwrap();
+                manifest_item.with_fallback("image-fallback");
+
+                assert_eq!(manifest_item.id, "image");
+                assert_eq!(manifest_item.path, PathBuf::from("image.tiff"));
+                assert_eq!(manifest_item.mime, "");
+                assert_eq!(manifest_item.properties, None);
+                assert_eq!(manifest_item.fallback, Some("image-fallback".to_string()));
+            }
+
+            #[test]
+            fn test_manifest_item_set_mime() {
+                let manifest_item = ManifestItem::new("style", "style.css");
+                assert!(manifest_item.is_ok());
+
+                let manifest_item = manifest_item.unwrap();
+                let updated_item = manifest_item.set_mime("text/css");
+
+                assert_eq!(updated_item.id, "style");
+                assert_eq!(updated_item.path, PathBuf::from("style.css"));
+                assert_eq!(updated_item.mime, "text/css");
+                assert_eq!(updated_item.properties, None);
+                assert_eq!(updated_item.fallback, None);
+            }
+
+            #[test]
+            fn test_manifest_item_build() {
+                let manifest_item = ManifestItem::new("cover", "images/cover.jpg");
+                assert!(manifest_item.is_ok());
+
+                let mut manifest_item = manifest_item.unwrap();
+                manifest_item
+                    .append_property("cover-image")
+                    .with_fallback("cover-fallback");
+
+                let built = manifest_item.build();
+
+                assert_eq!(built.id, "cover");
+                assert_eq!(built.path, PathBuf::from("images/cover.jpg"));
+                assert_eq!(built.mime, "");
+                assert_eq!(built.properties, Some("cover-image".to_string()));
+                assert_eq!(built.fallback, Some("cover-fallback".to_string()));
+            }
+
+            #[test]
+            fn test_manifest_item_builder_chaining() {
+                let manifest_item = ManifestItem::new("content", "content.xhtml");
+                assert!(manifest_item.is_ok());
+
+                let mut manifest_item = manifest_item.unwrap();
+                manifest_item
+                    .append_property("scripted")
+                    .append_property("svg")
+                    .with_fallback("fallback-content");
+
+                let built = manifest_item.build();
+
+                assert_eq!(built.id, "content");
+                assert_eq!(built.path, PathBuf::from("content.xhtml"));
+                assert_eq!(built.mime, "");
+                assert_eq!(built.properties, Some("scripted svg".to_string()));
+                assert_eq!(built.fallback, Some("fallback-content".to_string()));
+            }
+
+            #[test]
+            fn test_manifest_item_attributes() {
+                let manifest_item = ManifestItem::new("nav", "nav.xhtml");
+                assert!(manifest_item.is_ok());
+
+                let mut manifest_item = manifest_item.unwrap();
+                manifest_item
+                    .append_property("nav")
+                    .with_fallback("fallback-nav");
+
+                // Manually set mime type for testing
+                let manifest_item = manifest_item.set_mime("application/xhtml+xml");
+                let attributes = manifest_item.attributes();
+
+                // Check that all expected attributes are present
+                assert!(attributes.contains(&("id", "nav")));
+                assert!(attributes.contains(&("href", "nav.xhtml")));
+                assert!(attributes.contains(&("media-type", "application/xhtml+xml")));
+                assert!(attributes.contains(&("properties", "nav")));
+                assert!(attributes.contains(&("fallback", "fallback-nav")));
+            }
+
+            #[test]
+            fn test_manifest_item_attributes_optional_fields() {
+                let manifest_item = ManifestItem::new("simple", "simple.xhtml");
+                assert!(manifest_item.is_ok());
+
+                let manifest_item = manifest_item.unwrap();
+                let manifest_item = manifest_item.set_mime("application/xhtml+xml");
+                let attributes = manifest_item.attributes();
+
+                // Should contain required attributes
+                assert!(attributes.contains(&("id", "simple")));
+                assert!(attributes.contains(&("href", "simple.xhtml")));
+                assert!(attributes.contains(&("media-type", "application/xhtml+xml")));
+
+                // Should not contain optional attributes when they are None
+                assert!(!attributes.iter().any(|(k, _)| k == &"properties"));
+                assert!(!attributes.iter().any(|(k, _)| k == &"fallback"));
+            }
+
+            #[test]
+            fn test_manifest_item_path_handling() {
+                let manifest_item = ManifestItem::new("test", "../images/test.png");
+                assert!(manifest_item.is_err());
+
+                let err = manifest_item.unwrap_err();
+                assert_eq!(
+                    err.to_string(),
+                    "Epub builder error: A manifest with id 'test' should not use a relative path starting with '../'."
+                );
+            }
+        }
+
+        mod spine_item {
+            use crate::types::SpineItem;
+
+            #[test]
+            fn test_spine_item_new() {
+                let spine_item = SpineItem::new("content_001");
+
+                assert_eq!(spine_item.idref, "content_001");
+                assert_eq!(spine_item.id, None);
+                assert_eq!(spine_item.properties, None);
+                assert_eq!(spine_item.linear, true);
+            }
+
+            #[test]
+            fn test_spine_item_with_id() {
+                let mut spine_item = SpineItem::new("content_001");
+                spine_item.with_id("spine1");
+
+                assert_eq!(spine_item.idref, "content_001");
+                assert_eq!(spine_item.id, Some("spine1".to_string()));
+                assert_eq!(spine_item.properties, None);
+                assert_eq!(spine_item.linear, true);
+            }
+
+            #[test]
+            fn test_spine_item_append_property() {
+                let mut spine_item = SpineItem::new("content_001");
+                spine_item.append_property("page-spread-left");
+
+                assert_eq!(spine_item.idref, "content_001");
+                assert_eq!(spine_item.id, None);
+                assert_eq!(spine_item.properties, Some("page-spread-left".to_string()));
+                assert_eq!(spine_item.linear, true);
+            }
+
+            #[test]
+            fn test_spine_item_append_multiple_properties() {
+                let mut spine_item = SpineItem::new("content_001");
+                spine_item
+                    .append_property("page-spread-left")
+                    .append_property("rendition:layout-pre-paginated");
+
+                assert_eq!(
+                    spine_item.properties,
+                    Some("page-spread-left rendition:layout-pre-paginated".to_string())
+                );
+            }
+
+            #[test]
+            fn test_spine_item_set_linear() {
+                let mut spine_item = SpineItem::new("content_001");
+                spine_item.set_linear(false);
+
+                assert_eq!(spine_item.idref, "content_001");
+                assert_eq!(spine_item.id, None);
+                assert_eq!(spine_item.properties, None);
+                assert_eq!(spine_item.linear, false);
+            }
+
+            #[test]
+            fn test_spine_item_build() {
+                let mut spine_item = SpineItem::new("content_001");
+                spine_item
+                    .with_id("spine1")
+                    .append_property("page-spread-left")
+                    .set_linear(false);
+
+                let built = spine_item.build();
+
+                assert_eq!(built.idref, "content_001");
+                assert_eq!(built.id, Some("spine1".to_string()));
+                assert_eq!(built.properties, Some("page-spread-left".to_string()));
+                assert_eq!(built.linear, false);
+            }
+
+            #[test]
+            fn test_spine_item_builder_chaining() {
+                let mut spine_item = SpineItem::new("content_001");
+                spine_item
+                    .with_id("spine1")
+                    .append_property("page-spread-left")
+                    .set_linear(false);
+
+                let built = spine_item.build();
+
+                assert_eq!(built.idref, "content_001");
+                assert_eq!(built.id, Some("spine1".to_string()));
+                assert_eq!(built.properties, Some("page-spread-left".to_string()));
+                assert_eq!(built.linear, false);
+            }
+
+            #[test]
+            fn test_spine_item_attributes() {
+                let mut spine_item = SpineItem::new("content_001");
+                spine_item
+                    .with_id("spine1")
+                    .append_property("page-spread-left")
+                    .set_linear(false);
+
+                let attributes = spine_item.attributes();
+
+                // Check that all expected attributes are present
+                assert!(attributes.contains(&("idref", "content_001")));
+                assert!(attributes.contains(&("id", "spine1")));
+                assert!(attributes.contains(&("properties", "page-spread-left")));
+                assert!(attributes.contains(&("linear", "no"))); // false should become "no"
+            }
+
+            #[test]
+            fn test_spine_item_attributes_linear_yes() {
+                let spine_item = SpineItem::new("content_001");
+                let attributes = spine_item.attributes();
+
+                // Linear true should become "yes"
+                assert!(attributes.contains(&("linear", "yes")));
+            }
+
+            #[test]
+            fn test_spine_item_attributes_optional_fields() {
+                let spine_item = SpineItem::new("content_001");
+                let attributes = spine_item.attributes();
+
+                // Should only contain required attributes when optional fields are None
+                assert!(attributes.contains(&("idref", "content_001")));
+                assert!(attributes.contains(&("linear", "yes")));
+
+                // Should not contain optional attributes when they are None
+                assert!(!attributes.iter().any(|(k, _)| k == &"id"));
+                assert!(!attributes.iter().any(|(k, _)| k == &"properties"));
+            }
+        }
+
+        mod navpoint {
+
+            use std::path::PathBuf;
+
+            use crate::types::NavPoint;
+
+            #[test]
+            fn test_navpoint_new() {
+                let navpoint = NavPoint::new("Test Chapter");
+
+                assert_eq!(navpoint.label, "Test Chapter");
+                assert_eq!(navpoint.content, None);
+                assert_eq!(navpoint.children.len(), 0);
+            }
+
+            #[test]
+            fn test_navpoint_with_content() {
+                let mut navpoint = NavPoint::new("Test Chapter");
+                navpoint.with_content("chapter1.html");
+
+                assert_eq!(navpoint.label, "Test Chapter");
+                assert_eq!(navpoint.content, Some(PathBuf::from("chapter1.html")));
+                assert_eq!(navpoint.children.len(), 0);
+            }
+
+            #[test]
+            fn test_navpoint_append_child() {
+                let mut parent = NavPoint::new("Parent Chapter");
+
+                let mut child1 = NavPoint::new("Child Section 1");
+                child1.with_content("section1.html");
+
+                let mut child2 = NavPoint::new("Child Section 2");
+                child2.with_content("section2.html");
+
+                parent.append_child(child1.build());
+                parent.append_child(child2.build());
+
+                assert_eq!(parent.children.len(), 2);
+                assert_eq!(parent.children[0].label, "Child Section 1");
+                assert_eq!(parent.children[1].label, "Child Section 2");
+            }
+
+            #[test]
+            fn test_navpoint_set_children() {
+                let mut navpoint = NavPoint::new("Main Chapter");
+                let children = vec![NavPoint::new("Section 1"), NavPoint::new("Section 2")];
+
+                navpoint.set_children(children);
+
+                assert_eq!(navpoint.children.len(), 2);
+                assert_eq!(navpoint.children[0].label, "Section 1");
+                assert_eq!(navpoint.children[1].label, "Section 2");
+            }
+
+            #[test]
+            fn test_navpoint_build() {
+                let mut navpoint = NavPoint::new("Complete Chapter");
+                navpoint.with_content("complete.html");
+
+                let child = NavPoint::new("Sub Section");
+                navpoint.append_child(child.build());
+
+                let built = navpoint.build();
+
+                assert_eq!(built.label, "Complete Chapter");
+                assert_eq!(built.content, Some(PathBuf::from("complete.html")));
+                assert_eq!(built.children.len(), 1);
+                assert_eq!(built.children[0].label, "Sub Section");
+            }
+
+            #[test]
+            fn test_navpoint_builder_chaining() {
+                let mut navpoint = NavPoint::new("Chained Chapter");
+
+                navpoint
+                    .with_content("chained.html")
+                    .append_child(NavPoint::new("Child 1").build())
+                    .append_child(NavPoint::new("Child 2").build());
+
+                let built = navpoint.build();
+
+                assert_eq!(built.label, "Chained Chapter");
+                assert_eq!(built.content, Some(PathBuf::from("chained.html")));
+                assert_eq!(built.children.len(), 2);
+            }
+
+            #[test]
+            fn test_navpoint_empty_children() {
+                let navpoint = NavPoint::new("No Children Chapter");
+                let built = navpoint.build();
+
+                assert_eq!(built.children.len(), 0);
+            }
+
+            #[test]
+            fn test_navpoint_complex_hierarchy() {
+                let mut root = NavPoint::new("Book");
+
+                let mut chapter1 = NavPoint::new("Chapter 1");
+                chapter1
+                    .with_content("chapter1.html")
+                    .append_child(
+                        NavPoint::new("Section 1.1")
+                            .with_content("sec1_1.html")
+                            .build(),
+                    )
+                    .append_child(
+                        NavPoint::new("Section 1.2")
+                            .with_content("sec1_2.html")
+                            .build(),
+                    );
+
+                let mut chapter2 = NavPoint::new("Chapter 2");
+                chapter2.with_content("chapter2.html").append_child(
+                    NavPoint::new("Section 2.1")
+                        .with_content("sec2_1.html")
                         .build(),
-                )
-                .append_refinement(MetadataRefinement::new("title", "title", "テスト用の书籍"))
-                .build(),
-        );
+                );
 
-        metadatas.push(MetadataItem::new("dc:creator", "Test Author"));
+                root.append_child(chapter1.build())
+                    .append_child(chapter2.build());
 
-        metadatas.push(
-            MetadataItem::new("dc:identifier", "identifier")
-                .with_id("pub-id")
-                .build(),
-        );
+                let book = root.build();
 
-        assert_eq!(metadatas.len(), 3);
+                assert_eq!(book.label, "Book");
+                assert_eq!(book.children.len(), 2);
 
-        for metadata in metadatas.iter() {
-            println!("{:?}", metadata);
+                let ch1 = &book.children[0];
+                assert_eq!(ch1.label, "Chapter 1");
+                assert_eq!(ch1.children.len(), 2);
+
+                let ch2 = &book.children[1];
+                assert_eq!(ch2.label, "Chapter 2");
+                assert_eq!(ch2.children.len(), 1);
+            }
         }
     }
 }
