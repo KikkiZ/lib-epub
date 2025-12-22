@@ -1,11 +1,13 @@
 [package]
 name = "lib-epub"
 authors = ["KikkiZ <zhangyozh@foxmail.com>"]
-description = "A library for reading epub files"
+description = "A Rust library for reading and manipulating EPUB eBook files."
+documentation = "https://docs.rs/lib-epub"
 keywords = ["epub", "ebook"]
 license = "MIT"
+repository = "https://github.com/KikkiZ/lib-epub.git"
 
-version = "0.0.2"
+version = "0.0.3"
 edition = "2024"
 rust-version = "1.85"
 
@@ -26,3 +28,6 @@ flate2 = "1.1.5"
 
 [features]
 builder = ["chrono", "infer", "walkdir"]
+
+[package.metadata.docs.rs]
+all-features = true

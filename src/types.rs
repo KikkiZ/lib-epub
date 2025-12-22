@@ -1,8 +1,40 @@
+//! Types and data structures for EPUB processing
+//!
+//! This module defines all the core data structures used throughout the EPUB library.
+//! These structures represent the various components of an EPUB publication according to
+//! the EPUB specification, including metadata, manifest items, spine items, navigation points,
+//! and encryption information.
+//!
+//! The types in this module are designed to be compatible with both EPUB 2 and EPUB 3
+//! specifications, providing a unified interface for working with different versions
+//! of EPUB publications.
+//!
+//! ## Main Components
+//!
+//! - [MetadataItem] - Represents metadata entries in the publication
+//! - [MetadataRefinement] - Additional details for metadata items (EPUB 3.x)
+//! - [MetadataLinkItem] - Links to external metadata resources
+//! - [ManifestItem] - Resources declared in the publication manifest
+//! - [SpineItem] - Items defining the reading order
+//! - [NavPoint] - Navigation points in the table of contents
+//! - [EncryptionData] - Information about encrypted resources
+//!
+//! ## Builder Pattern
+//!
+//! Many of these types implement a builder pattern for easier construction when the
+//! `builder` feature is enabled. See individual type documentation for details.
+
 use std::path::PathBuf;
 
 #[cfg(feature = "builder")]
-use crate::{builder::EpubBuilderError, error::EpubError, utils::ELEMENT_IN_DC_NAMESPACE};
+use crate::{
+    error::{EpubBuilderError, EpubError},
+    utils::ELEMENT_IN_DC_NAMESPACE,
+};
 
+/// Represents the EPUB version
+///
+/// This enum is used to distinguish between different versions of the EPUB specification.
 #[derive(Debug, PartialEq, Eq)]
 pub enum EpubVersion {
     Version2_0,
@@ -18,6 +50,21 @@ pub enum EpubVersion {
 /// In EPUB 3.0, metadata items can have refinements that provide additional details about
 /// the main metadata item. For example, a title metadata item might have refinements that
 /// specify it is the main title of the publication.
+///
+/// # Builder Methods
+///
+/// When the `builder` feature is enabled, this struct provides convenient builder methods:
+///
+/// ```rust
+/// # #[cfg(feature = "builder")] {
+/// use lib_epub::types::MetadataItem;
+///
+/// let metadata = MetadataItem::new("title", "Sample Book")
+///     .with_id("title-1")
+///     .with_lang("en")
+///     .build();
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct MetadataItem {
     /// Optional unique identifier for this metadata item
@@ -51,6 +98,13 @@ pub struct MetadataItem {
 
 #[cfg(feature = "builder")]
 impl MetadataItem {
+    /// Creates a new metadata item with the given property and value
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `property` - The metadata property name (e.g., "title", "creator")
+    /// - `value` - The metadata value
     pub fn new(property: &str, value: &str) -> Self {
         Self {
             id: None,
@@ -61,16 +115,37 @@ impl MetadataItem {
         }
     }
 
+    /// Sets the ID of the metadata item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `id` - The ID to assign to this metadata item
     pub fn with_id(&mut self, id: &str) -> &mut Self {
         self.id = Some(id.to_string());
         self
     }
 
+    /// Sets the language of the metadata item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `lang` - The language code (e.g., "en", "fr", "zh-CN")
     pub fn with_lang(&mut self, lang: &str) -> &mut Self {
         self.lang = Some(lang.to_string());
         self
     }
 
+    /// Adds a refinement to this metadata item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `refine` - The refinement to add
+    ///
+    /// # Notes
+    /// - The metadata item must have an ID for refinements to be added.
     pub fn append_refinement(&mut self, refine: MetadataRefinement) -> &mut Self {
         if self.id.is_some() {
             self.refined.push(refine);
@@ -81,10 +156,14 @@ impl MetadataItem {
         self
     }
 
+    /// Builds the final metadata item
+    ///
+    /// Requires the `builder` feature.
     pub fn build(&self) -> Self {
         Self { ..self.clone() }
     }
 
+    /// Gets the XML attributes for this metadata item
     pub(crate) fn attributes(&self) -> Vec<(&str, &str)> {
         let mut attributes = Vec::new();
 
@@ -112,6 +191,21 @@ impl MetadataItem {
 ///
 /// For example, a creator metadata item might have refinements specifying the creator's role
 /// or the scheme used for an identifier.
+///
+/// # Builder Methods
+///
+/// When the `builder` feature is enabled, this struct provides convenient builder methods:
+///
+/// ```rust
+/// # #[cfg(feature = "builder")] {
+/// use lib_epub::types::MetadataRefinement;
+///
+/// let refinement = MetadataRefinement::new("creator-1", "role", "author")
+///     .with_lang("en")
+///     .with_scheme("marc:relators")
+///     .build();
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct MetadataRefinement {
     pub refines: String,
@@ -137,6 +231,14 @@ pub struct MetadataRefinement {
 
 #[cfg(feature = "builder")]
 impl MetadataRefinement {
+    /// Creates a new metadata refinement
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `refines` - The ID of the metadata item being refined
+    /// - `property` - The refinement property name
+    /// - `value` - The refinement value
     pub fn new(refines: &str, property: &str, value: &str) -> Self {
         Self {
             refines: refines.to_string(),
@@ -147,20 +249,36 @@ impl MetadataRefinement {
         }
     }
 
+    /// Sets the language of the refinement
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `lang` - The language code
     pub fn with_lang(&mut self, lang: &str) -> &mut Self {
         self.lang = Some(lang.to_string());
         self
     }
 
+    /// Sets the scheme of the refinement
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `scheme` - The scheme identifier
     pub fn with_scheme(&mut self, scheme: &str) -> &mut Self {
         self.scheme = Some(scheme.to_string());
         self
     }
 
+    /// Builds the final metadata refinement
+    ///
+    /// Requires the `builder` feature.
     pub fn build(&self) -> Self {
         Self { ..self.clone() }
     }
 
+    /// Gets the XML attributes for this refinement
     pub(crate) fn attributes(&self) -> Vec<(&str, &str)> {
         let mut attributes = Vec::new();
 
@@ -233,6 +351,22 @@ pub struct MetadataLinkItem {
 /// Manifest items support the fallback mechanism, allowing alternative versions of a resource
 /// to be specified. This is particularly important for foreign resources (resources with
 /// non-core media types) that may not be supported by all reading systems.
+///
+/// # Builder Methods
+///
+/// When the `builder` feature is enabled, this struct provides convenient builder methods:
+///
+/// ```
+/// # #[cfg(feature = "builder")] {
+/// use lib_epub::types::ManifestItem;
+///
+/// let manifest_item = ManifestItem::new("cover", "images/cover.jpg")
+///     .unwrap()
+///     .append_property("cover-image")
+///     .with_fallback("cover-fallback")
+///     .build();
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ManifestItem {
     /// The unique identifier for this resource item
@@ -271,6 +405,16 @@ pub struct ManifestItem {
 // TODO: 需要增加一个函数，用于处理绝对路径‘/’和相对opf路径，将相对路径转为绝对路径
 #[cfg(feature = "builder")]
 impl ManifestItem {
+    /// Creates a new manifest item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `id` - The unique identifier for this resource
+    /// - `path` - The path to the resource file
+    ///
+    /// # Errors
+    /// Returns an error if the path starts with "../" which is not allowed.
     pub fn new(id: &str, path: &str) -> Result<Self, EpubError> {
         if path.starts_with("../") {
             return Err(EpubBuilderError::IllegalManifestPath {
@@ -288,6 +432,7 @@ impl ManifestItem {
         })
     }
 
+    /// Sets the MIME type of the manifest item
     pub(crate) fn set_mime(self, mime: &str) -> Self {
         Self {
             id: self.id,
@@ -298,6 +443,12 @@ impl ManifestItem {
         }
     }
 
+    /// Appends a property to the manifest item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `property` - The property to add
     pub fn append_property(&mut self, property: &str) -> &mut Self {
         let new_properties = if let Some(properties) = &self.properties {
             format!("{} {}", properties, property)
@@ -309,15 +460,25 @@ impl ManifestItem {
         self
     }
 
+    /// Sets the fallback for this manifest item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `fallback` - The ID of the fallback manifest item
     pub fn with_fallback(&mut self, fallback: &str) -> &mut Self {
         self.fallback = Some(fallback.to_string());
         self
     }
 
+    /// Builds the final manifest item
+    ///
+    /// Requires the `builder` feature.
     pub fn build(&self) -> Self {
         Self { ..self.clone() }
     }
 
+    /// Gets the XML attributes for this manifest item
     pub fn attributes(&self) -> Vec<(&str, &str)> {
         let mut attributes = Vec::new();
 
@@ -347,6 +508,22 @@ impl ManifestItem {
 /// The spine is a crucial component of an EPUB publication as it determines the recommended
 /// reading order of content documents. Items can be marked as linear (part of the main reading
 /// flow) or non-linear (supplementary content that may be accessed out of sequence).
+///
+/// # Builder Methods
+///
+/// When the `builder` feature is enabled, this struct provides convenient builder methods:
+///
+/// ```
+/// # #[cfg(feature = "builder")] {
+/// use lib_epub::types::SpineItem;
+///
+/// let spine_item = SpineItem::new("content-1")
+///     .with_id("spine-1")
+///     .append_property("page-spread-right")
+///     .set_linear(false)
+///     .build();
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct SpineItem {
     /// The ID reference to a manifest item
@@ -380,6 +557,14 @@ pub struct SpineItem {
 
 #[cfg(feature = "builder")]
 impl SpineItem {
+    /// Creates a new spine item referencing a manifest item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// By default, spine items are linear.
+    ///
+    /// # Parameters
+    /// - `idref` - The ID of the manifest item this spine item references
     pub fn new(idref: &str) -> Self {
         Self {
             idref: idref.to_string(),
@@ -389,11 +574,23 @@ impl SpineItem {
         }
     }
 
+    /// Sets the ID of the spine item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `id` - The ID to assign to this spine item
     pub fn with_id(&mut self, id: &str) -> &mut Self {
         self.id = Some(id.to_string());
         self
     }
 
+    /// Appends a property to the spine item
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `property` - The property to add
     pub fn append_property(&mut self, property: &str) -> &mut Self {
         let new_properties = if let Some(properties) = &self.properties {
             format!("{} {}", properties, property)
@@ -405,15 +602,25 @@ impl SpineItem {
         self
     }
 
+    /// Sets whether this spine item is part of the linear reading order
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `linear` - `true` if the item is part of the linear reading order, `false` otherwise
     pub fn set_linear(&mut self, linear: bool) -> &mut Self {
         self.linear = linear;
         self
     }
 
+    /// Builds the final spine item
+    ///
+    /// Requires the `builder` feature.
     pub fn build(&self) -> Self {
         Self { ..self.clone() }
     }
 
+    /// Gets the XML attributes for this spine item
     pub(crate) fn attributes(&self) -> Vec<(&str, &str)> {
         let mut attributes = Vec::new();
 
@@ -443,8 +650,8 @@ pub struct EncryptionData {
     ///
     /// This field specifies the encryption method used for the resource.
     /// Supported encryption methods:
-    /// - IDPF font obfuscation: "http://www.idpf.org/2008/embedding"
-    /// - Adobe font obfuscation: "http://ns.adobe.com/pdf/enc#RC"
+    /// - IDPF font obfuscation: <http://www.idpf.org/2008/embedding>
+    /// - Adobe font obfuscation: <http://ns.adobe.com/pdf/enc#RC>
     pub method: String,
 
     /// The URI of the encrypted resource
@@ -459,6 +666,25 @@ pub struct EncryptionData {
 /// The `NavPoint` structure represents a single entry in the hierarchical table of contents
 /// of an EPUB publication. Each navigation point corresponds to a section or chapter in
 /// the publication and may contain nested child navigation points to represent sub-sections.
+///
+/// # Builder Methods
+///
+/// When the `builder` feature is enabled, this struct provides convenient builder methods:
+///
+/// ```
+/// # #[cfg(feature = "builder")] {
+/// use lib_epub::types::NavPoint;
+///
+/// let nav_point = NavPoint::new("Chapter 1")
+///     .with_content("chapter1.xhtml")
+///     .append_child(
+///         NavPoint::new("Section 1.1")
+///             .with_content("section1_1.xhtml")
+///             .build()
+///     )
+///     .build();
+/// # }
+/// ```
 #[derive(Debug, Eq, Clone)]
 pub struct NavPoint {
     /// The display label/title of this navigation point
@@ -484,6 +710,12 @@ pub struct NavPoint {
 
 #[cfg(feature = "builder")]
 impl NavPoint {
+    /// Creates a new navigation point with the given label
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `label` - The display label for this navigation point
     pub fn new(label: &str) -> Self {
         Self {
             label: label.to_string(),
@@ -493,21 +725,42 @@ impl NavPoint {
         }
     }
 
+    /// Sets the content path for this navigation point
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `content` - The path to the content document
     pub fn with_content(&mut self, content: &str) -> &mut Self {
         self.content = Some(PathBuf::from(content));
         self
     }
 
+    /// Appends a child navigation point
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `child` - The child navigation point to add
     pub fn append_child(&mut self, child: NavPoint) -> &mut Self {
         self.children.push(child);
         self
     }
 
+    /// Sets all child navigation points
+    ///
+    /// Requires the `builder` feature.
+    ///
+    /// # Parameters
+    /// - `children` - Vector of child navigation points
     pub fn set_children(&mut self, children: Vec<NavPoint>) -> &mut Self {
         self.children = children;
         self
     }
 
+    /// Builds the final navigation point
+    ///
+    /// Requires the `builder` feature.
     pub fn build(&self) -> Self {
         Self { ..self.clone() }
     }

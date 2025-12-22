@@ -1,3 +1,42 @@
+//! Epub Builder
+//!
+//! This module provides functionality for creating and building EPUB eBook files.
+//! The `EpubBuilder` structure implements the build logic of the EPUB 3.0 specification,
+//! allowing users to create standard-compliant EPUB files from scratch.
+//!
+//! ## Usage
+//!
+//! ```rust, no_run
+//! # #[cfg(feature = "builder")] {
+//! # fn main() -> Result<(), lib_epub::error::EpubError> {
+//! use lib_epub::{
+//!     builder::{EpubBuilder, EpubVersion3},
+//!     types::{MetadataItem, ManifestItem, SpineItem},
+//! };
+//!
+//! let mut builder = EpubBuilder::<EpubVersion3>::new()?;
+//! builder
+//!     .add_rootfile("OEBPS/content.opf")
+//!     .add_metadata(MetadataItem::new("title", "Test Book"))
+//!     .add_manifest(
+//!         "path/to/content",
+//!         ManifestItem::new("content_id", "target/path")?,
+//!     )?
+//!     .add_spine(SpineItem::new("content.xhtml"));
+//!
+//! builder.build("output.epub")?;
+//! # Ok(())
+//! # }
+//! # }
+//! ```
+//!
+//! ## Notes
+//!
+//! - Requires `builder` functionality to use this module.
+//! - Files will be manipulated in a temporary directory during the build process;
+//!   automatic cleanup will occur upon completion
+//! - All resource files must exist on the local file system.
+
 use std::{
     collections::HashMap,
     env,
@@ -14,68 +53,56 @@ use quick_xml::{
     Writer,
     events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event},
 };
-use thiserror::Error;
 use walkdir::WalkDir;
 use zip::{CompressionMethod, ZipWriter, write::FileOptions};
 
 use crate::{
     epub::EpubDoc,
-    error::EpubError,
+    error::{EpubBuilderError, EpubError},
     types::{ManifestItem, MetadataItem, NavPoint, SpineItem},
     utils::{ELEMENT_IN_DC_NAMESPACE, local_time},
 };
 
 type XmlWriter = Writer<Cursor<Vec<u8>>>;
 
-#[derive(Debug, Error)]
-pub enum EpubBuilderError {
-    #[error(
-        "A manifest with id '{manifest_id}' should not use a relative path starting with '../'."
-    )]
-    IllegalManifestPath { manifest_id: String },
-
-    #[error("Circular reference detected in fallback chain for '{fallback_chain}'.")]
-    ManifestCircularReference { fallback_chain: String },
-
-    #[error("Fallback resource '{manifest_id}' does not exist in manifest.")]
-    ManifestNotFound { manifest_id: String },
-
-    #[error("Requires at least one 'title', 'language', and 'identifier' with id 'pub-id'.")]
-    MissingNecessaryMetadata,
-
-    #[error("Navigation information is not set.")]
-    NavigationInfoUninitalized,
-
-    #[error("Need at least one rootfile.")]
-    MissingRootfile,
-
-    #[error("Expect a file, but '{target_path}' is not a file.")]
-    TargetIsNotFile { target_path: String },
-
-    #[error("There are too many items with 'nav' property in the manifest.")]
-    TooManyNavFlags,
-
-    #[error("Unable to analyze the file '{file_path}' type.")]
-    UnknowFileFormat { file_path: String },
-}
-
 // struct EpubVersion2;
-struct EpubVersion3;
+pub struct EpubVersion3;
 
+/// EPUB Builder
+///
+/// The main structure used to create and build EPUB ebook files.
+/// Supports the EPUB 3.0 specification and can build a complete EPUB file structure.
 pub struct EpubBuilder<Version> {
+    /// EPUB version placeholder
     epub_version: PhantomData<Version>,
+
+    /// Temporary directory path for storing files during the build process
     temp_dir: PathBuf,
 
+    /// List of root file paths
     rootfiles: Vec<String>,
+
+    /// List of metadata items
     metadata: Vec<MetadataItem>,
+
+    /// Manifest item mapping table, with ID as the key and manifest item as the value
     manifest: HashMap<String, ManifestItem>,
+
+    /// List of spine items, defining the reading order
     spine: Vec<SpineItem>,
 
     catalog_title: String,
+
+    /// List of catalog navigation points
     catalog: Vec<NavPoint>,
 }
 
 impl EpubBuilder<EpubVersion3> {
+    /// Create a new `EpubBuilder` instance
+    ///
+    /// # Return
+    /// - `Ok(EpubBuilder)`: Builder instance created successfully
+    /// - `Err(EpubError)`: Error occurred during builder initialization
     pub fn new() -> Result<Self, EpubError> {
         let temp_dir = env::temp_dir().join(local_time());
         fs::create_dir(&temp_dir)?;
@@ -98,17 +125,43 @@ impl EpubBuilder<EpubVersion3> {
         })
     }
 
+    /// Add a rootfile path
+    ///
+    /// The added path points to an OPF file that does not yet exist
+    /// and will be created when building the Epub file.
+    ///
+    /// # Parameters
+    /// - `rootfile`: Rootfile path
     pub fn add_rootfile(&mut self, rootfile: &str) -> &mut Self {
         self.rootfiles.push(rootfile.to_string());
 
         self
     }
 
+    /// Add metadata item
+    ///
+    /// Required metadata includes title, language, and an identifier with 'pub-id'.
+    /// Missing this data will result in an error when building the epub file.
+    ///
+    /// # Parameters
+    /// - `item`: Metadata items to add
     pub fn add_metadata(&mut self, item: MetadataItem) -> &mut Self {
         self.metadata.push(item);
         self
     }
 
+    /// Add manifest item and corresponding resource file
+    ///
+    /// The builder will automatically recognize the file type of
+    /// the added resource and update it in `ManifestItem`.
+    ///
+    /// # Parameters
+    /// - `manifest_source` - Local resource file path
+    /// - `manifest_item` - Manifest item information
+    ///
+    /// # Return
+    /// - `Ok(&mut Self)` - Successful addition, returns a reference to itself
+    /// - `Err(EpubError)` - Error occurred during the addition process
     pub fn add_manifest(
         &mut self,
         manifest_source: &str,
@@ -159,29 +212,62 @@ impl EpubBuilder<EpubVersion3> {
         }
     }
 
+    /// Add spine item
+    ///
+    /// The spine item defines the reading order of the book.
+    ///
+    /// # Parameters
+    /// - `item`: Spine item to add
     pub fn add_spine(&mut self, item: SpineItem) -> &mut Self {
         self.spine.push(item);
         self
     }
 
+    /// Set catalog title
+    ///
+    /// # Parameters
+    /// - `title`: Catalog title
     pub fn set_catalog_title(&mut self, title: &str) -> &mut Self {
         self.catalog_title = title.to_string();
         self
     }
 
+    /// Add catalog item
+    ///
+    /// Added directory items will be added to the end of the existing list.
+    ///
+    /// # Parameters
+    /// - `item`: Catalog item to add
     pub fn add_catalog_item(&mut self, item: NavPoint) -> &mut Self {
         self.catalog.push(item);
         self
     }
 
+    /// Re-/ Set catalog
+    ///
+    /// The passed list will overwrite existing data.
+    ///
+    /// # Parameters
+    /// - `catalog`: Catalog to set
     pub fn set_catalog(&mut self, catalog: Vec<NavPoint>) -> &mut Self {
         self.catalog = catalog;
         self
     }
 
+    /// Builds an EPUB file and saves it to the specified path
+    ///
+    /// # Parameters
+    /// - `output_path`: Output file path
+    ///
+    /// # Return
+    /// - `Ok(())`: Build successful
+    /// - `Err(EpubError)`: Error occurred during the build process
     pub fn make<P: AsRef<Path>>(mut self, output_path: P) -> Result<(), EpubError> {
+        // Create the container.xml, navigation document, and OPF files in sequence.
+        // The associated metadata will initialized when navigation document is created;
+        // therefore, the navigation document must be created before the opf file is created.
         self.make_container_xml()?;
-        self.make_navigation_document()?; // It should be before make opf file
+        self.make_navigation_document()?;
         self.make_opf_file()?;
 
         if let Some(parent) = output_path.as_ref().parent() {
@@ -217,6 +303,16 @@ impl EpubBuilder<EpubVersion3> {
         Ok(())
     }
 
+    /// Builds an EPUB file and returns a `EpubDoc`
+    ///
+    /// Builds an EPUB file at the specified location and parses it into a usable EpubDoc object.
+    ///
+    /// # Parameters
+    /// - `output_path`: Output file path
+    ///
+    /// # Return
+    /// - `Ok(EpubDoc)`: Build successful
+    /// - `Err(EpubError)`: Error occurred during the build process
     pub fn build<P: AsRef<Path>>(
         self,
         output_path: P,
@@ -226,6 +322,9 @@ impl EpubBuilder<EpubVersion3> {
         EpubDoc::new(output_path)
     }
 
+    /// Creates the `container.xml` file
+    ///
+    /// An error will occur if the `rootfile` path is not set
     fn make_container_xml(&self) -> Result<(), EpubError> {
         if self.rootfiles.is_empty() {
             return Err(EpubBuilderError::MissingRootfile.into());
@@ -260,37 +359,9 @@ impl EpubBuilder<EpubVersion3> {
         Ok(())
     }
 
-    fn make_opf_file(&mut self) -> Result<(), EpubError> {
-        if !self.validate_metadata() {
-            return Err(EpubBuilderError::MissingNecessaryMetadata.into());
-        }
-        self.validate_manifest_fallback_chains()?;
-        self.validate_manifest_nav()?;
-
-        let mut writer = Writer::new(Cursor::new(Vec::new()));
-
-        writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
-
-        writer.write_event(Event::Start(BytesStart::new("package").with_attributes([
-            ("xmlns", "http://www.idpf.org/2007/opf"),
-            ("xmlns:dc", "http://purl.org/dc/elements/1.1/"),
-            ("unique-identifier", "pub-id"),
-            ("version", "3.0"),
-        ])))?;
-
-        self.make_opf_metadata(&mut writer)?;
-        self.make_opf_manifest(&mut writer)?;
-        self.make_opf_spine(&mut writer)?;
-
-        writer.write_event(Event::End(BytesEnd::new("package")))?;
-
-        let file_path = self.temp_dir.join(&self.rootfiles[0]);
-        let file_data = writer.into_inner().into_inner();
-        fs::write(file_path, file_data)?;
-
-        Ok(())
-    }
-
+    /// Creates the `navigation document`
+    ///
+    /// An error will occur if navigation information is not initialized.
     fn make_navigation_document(&mut self) -> Result<(), EpubError> {
         if self.catalog.is_empty() {
             return Err(EpubBuilderError::NavigationInfoUninitalized.into());
@@ -343,6 +414,43 @@ impl EpubBuilder<EpubVersion3> {
                 fallback: None,
             },
         );
+
+        Ok(())
+    }
+
+    /// Creates the `OPF` file
+    ///
+    /// # Error conditions
+    /// - Missing necessary metadata
+    /// - Circular reference exists in the manifest backlink
+    /// - Navigation information is not initialized
+    fn make_opf_file(&mut self) -> Result<(), EpubError> {
+        if !self.validate_metadata() {
+            return Err(EpubBuilderError::MissingNecessaryMetadata.into());
+        }
+        self.validate_manifest_fallback_chains()?;
+        self.validate_manifest_nav()?;
+
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+
+        writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+
+        writer.write_event(Event::Start(BytesStart::new("package").with_attributes([
+            ("xmlns", "http://www.idpf.org/2007/opf"),
+            ("xmlns:dc", "http://purl.org/dc/elements/1.1/"),
+            ("unique-identifier", "pub-id"),
+            ("version", "3.0"),
+        ])))?;
+
+        self.make_opf_metadata(&mut writer)?;
+        self.make_opf_manifest(&mut writer)?;
+        self.make_opf_spine(&mut writer)?;
+
+        writer.write_event(Event::End(BytesEnd::new("package")))?;
+
+        let file_path = self.temp_dir.join(&self.rootfiles[0]);
+        let file_data = writer.into_inner().into_inner();
+        fs::write(file_path, file_data)?;
 
         Ok(())
     }
@@ -443,6 +551,9 @@ impl EpubBuilder<EpubVersion3> {
         Ok(())
     }
 
+    /// Verify metadata integrity
+    ///
+    /// Check if the required metadata items are included: title, language, and identifier with pub-id.
     fn validate_metadata(&self) -> bool {
         let has_title = self.metadata.iter().any(|item| item.property == "title");
         let has_language = self.metadata.iter().any(|item| item.property == "language");
@@ -504,6 +615,9 @@ impl EpubBuilder<EpubVersion3> {
         }
     }
 
+    /// Validate navigation list items
+    ///
+    /// Check if there is only one list item with the `nav` property.
     fn validate_manifest_nav(&self) -> Result<(), EpubError> {
         if self
             .manifest
@@ -530,6 +644,7 @@ impl EpubBuilder<EpubVersion3> {
 }
 
 impl<Version> Drop for EpubBuilder<Version> {
+    /// Remove temporary directory when dropped
     fn drop(&mut self) {
         if let Err(err) = fs::remove_dir_all(&self.temp_dir) {
             warn!("{}", err);
@@ -537,6 +652,9 @@ impl<Version> Drop for EpubBuilder<Version> {
     }
 }
 
+/// Refine the mime type
+///
+/// Optimize mime types inferred from file content based on file extensions
 fn refine_mime_type(infer_mime: &str, extension: &str) -> String {
     match (infer_mime, extension) {
         ("text/xml", "xhtml")

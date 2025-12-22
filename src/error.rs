@@ -1,3 +1,14 @@
+//! Error Type Definition Module
+//!
+//! This module defines the various error types that may be encountered during
+//! EPUB file parsing and processing. All errors are uniformly wrapped in the
+//! `EpubError` enumeration for convenient error handling by the caller.
+//!
+//! ## Main Error Types
+//!
+//! - [EpubError] - Enumeration of main errors during EPUB processing
+//! - [EpubBuilderError] - Specific errors during EPUB build process (requires `builder` functionality enabled)
+
 use thiserror::Error;
 
 /// Types of errors that can occur during EPUB processing
@@ -22,9 +33,7 @@ pub enum EpubError {
 
     #[cfg(feature = "builder")]
     #[error("Epub builder error: {source}")]
-    EpubBuilderError {
-        source: crate::builder::EpubBuilderError,
-    },
+    EpubBuilderError { source: EpubBuilderError },
 
     /// XML parsing failure error
     ///
@@ -171,8 +180,8 @@ impl From<std::string::FromUtf16Error> for EpubError {
 }
 
 #[cfg(feature = "builder")]
-impl From<crate::builder::EpubBuilderError> for EpubError {
-    fn from(value: crate::builder::EpubBuilderError) -> Self {
+impl From<EpubBuilderError> for EpubError {
+    fn from(value: EpubBuilderError) -> Self {
         EpubError::EpubBuilderError { source: value }
     }
 }
@@ -239,4 +248,76 @@ impl PartialEq for EpubError {
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
+}
+
+/// Types of errors that can occur during EPUB build
+///
+/// This enumeration defines various error conditions that may occur
+/// when creating EPUB files using the `builder` function. These errors
+/// are typically related to EPUB specification requirements or validation
+/// rules during the build process.
+#[cfg(feature = "builder")]
+#[derive(Debug, Error)]
+pub enum EpubBuilderError {
+    /// Illegal manifest path error
+    ///
+    /// This error is triggered when the path corresponding to a resource ID
+    /// in the manifest begins with "../". Using relative paths starting with "../"
+    /// when building the manifest fails to determine the 'current location',
+    /// making it impossible to pinpoint the resource.
+    #[error(
+        "A manifest with id '{manifest_id}' should not use a relative path starting with '../'."
+    )]
+    IllegalManifestPath { manifest_id: String },
+
+    /// Manifest Circular Reference error
+    ///
+    /// This error is triggered when a fallback relationship between manifest items forms a cycle.
+    #[error("Circular reference detected in fallback chain for '{fallback_chain}'.")]
+    ManifestCircularReference { fallback_chain: String },
+
+    /// Manifest resource not found error
+    ///
+    /// This error is triggered when a manifest item specifies a fallback resource ID that does not exist.
+    #[error("Fallback resource '{manifest_id}' does not exist in manifest.")]
+    ManifestNotFound { manifest_id: String },
+
+    /// Missing necessary metadata error
+    ///
+    /// This error is triggered when the basic metadata required to build a valid EPUB is missing.
+    /// The following must be included: title, language, and an identifier with a 'pub-id' ID.
+    #[error("Requires at least one 'title', 'language', and 'identifier' with id 'pub-id'.")]
+    MissingNecessaryMetadata,
+
+    /// Navigation information uninitialized error
+    ///
+    /// This error is triggered when attempting to build an EPUB but without setting navigation information.
+    #[error("Navigation information is not set.")]
+    NavigationInfoUninitalized,
+
+    /// Missing rootfile error
+    ///
+    /// This error is triggered when attempting to build an EPUB without adding any 'rootfile'.
+    #[error("Need at least one rootfile.")]
+    MissingRootfile,
+
+    /// Target is not a file error
+    ///
+    /// This error is triggered when the specified target path is not a file.
+    #[error("Expect a file, but '{target_path}' is not a file.")]
+    TargetIsNotFile { target_path: String },
+
+    /// Too many nav flags error
+    ///
+    /// This error is triggered when the manifest contains multiple items with
+    /// the `nav` attribute. The EPUB specification requires that each EPUB have
+    /// **only one** navigation document.
+    #[error("There are too many items with 'nav' property in the manifest.")]
+    TooManyNavFlags,
+
+    /// Unknown file format error
+    ///
+    /// This error is triggered when the format type of the specified file cannot be analyzed.
+    #[error("Unable to analyze the file '{file_path}' type.")]
+    UnknowFileFormat { file_path: String },
 }

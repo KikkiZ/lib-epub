@@ -1,3 +1,27 @@
+//! The core module of the EPUB parsing library
+//!
+//! This module provides complete parsing functionality for EPUB ebook files
+//! and is the core component of the entire library. The `EpubDoc` structure
+//! encapsulates all the parsing logic and data access interfaces for EPUB files.
+//!
+//! ## Main references to EPUB specs:
+//! - <https://www.w3.org/TR/epub-33>
+//! - <https://idpf.org/epub/201>
+//!
+//! ## Potential Issues
+//! - The generic parameter `R: Read + Seek` increases complexity, particularly
+//!   in asynchronous environments. The current design is not conducive to multi-threaded
+//!   concurrent access and requires an external synchronization mechanism.
+//! - Some error handling may not be sufficiently nuanced, and certain edge cases
+//!   may not be adequately considered.
+//! - Loading the entire EPUB document at once may result in significant memory consumption,
+//!   especially for large publications.
+//!
+//! ## Future Work
+//! - Adds support for asynchronous I/O, improving the user experience in asynchronous
+//!   environments. Considering adding support for multi-threaded access.
+//! - Supports more EPUB specification features, such as media overlay and scripts.
+
 use std::{
     collections::HashMap,
     fs::{File, canonicalize},
@@ -33,19 +57,14 @@ use crate::{
 /// file structure and parsing details. Strictly adheres to the EPUB specification
 /// in implementing the parsing logic to ensure compatibility with the standard.
 ///
-/// # Potential Issues
-/// - The generic parameter `R: Read + Seek` increases complexity, particularly
-///   in asynchronous environments. The current design is not conducive to multi-threaded
-///   concurrent access and requires an external synchronization mechanism.
-/// - Some error handling may not be sufficiently nuanced, and certain edge cases
-///   may not be adequately considered.
-/// - Loading the entire EPUB document at once may result in significant memory consumption,
-///   especially for large publications.
+/// # Usage
 ///
-/// # Future Work
-/// - Adds support for asynchronous I/O, improving the user experience in asynchronous
-///   environments. Considering adding support for multi-threaded access.
-/// - Supports more EPUB specification features, such as media overlay and scripts.
+/// ```rust
+/// use lib_epub::epub::EpubDoc;
+///
+/// let doc = EpubDoc::new("./test_case/epub-33.epub");
+/// assert!(doc.is_ok());
+/// ```
 pub struct EpubDoc<R: Read + Seek> {
     /// The structure of the epub file that actually holds it
     pub(crate) archive: ZipArchive<R>,
