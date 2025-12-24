@@ -3,6 +3,7 @@ name = "lib-epub"
 authors = ["KikkiZ <zhangyozh@foxmail.com>"]
 description = "A Rust library for reading and manipulating EPUB eBook files."
 documentation = "https://docs.rs/lib-epub"
+exclude = ["/test_case"]
 keywords = ["epub", "ebook"]
 license = "MIT"
 repository = "https://github.com/KikkiZ/lib-epub.git"
