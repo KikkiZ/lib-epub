@@ -516,7 +516,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                     .values()
                     .find(|item| {
                         if let Some(property) = &item.properties {
-                            return property == "nav";
+                            return property.contains("nav");
                         }
                         false
                     })
