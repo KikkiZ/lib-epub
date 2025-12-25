@@ -408,7 +408,7 @@ impl EpubBuilder<EpubVersion3> {
             "nav".to_string(),
             ManifestItem {
                 id: "nav".to_string(),
-                path: self.temp_dir.join("nav.xhtml"),
+                path: PathBuf::from("nav.xhtml"),
                 mime: "application/xhtml+xml".to_string(),
                 properties: Some("nav".to_string()),
                 fallback: None,
@@ -470,7 +470,7 @@ impl EpubBuilder<EpubVersion3> {
             let tag_name = if ELEMENT_IN_DC_NAMESPACE.contains(&metadata.property.as_str()) {
                 format!("dc:{}", metadata.property)
             } else {
-                metadata.property.clone()
+                "meta".to_string()
             };
 
             writer.write_event(Event::Start(
