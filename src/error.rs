@@ -270,6 +270,14 @@ pub enum EpubBuilderError {
     )]
     IllegalManifestPath { manifest_id: String },
 
+    /// Invalid rootfile path error
+    ///
+    /// This error is triggered when the rootfile path in the container.xml is invalid.
+    /// According to the EPUB specification, rootfile paths must be relative paths
+    /// that do not start with "../" to prevent directory traversal outside the EPUB container.
+    #[error("A rootfile path should be a relative path and not start with '../'.")]
+    IllegalRootfilePath,
+
     /// Manifest Circular Reference error
     ///
     /// This error is triggered when a fallback relationship between manifest items forms a cycle.

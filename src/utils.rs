@@ -2,7 +2,7 @@ use std::{
     cmp::min,
     collections::HashMap,
     io::{Read, Seek},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[cfg(feature = "builder")]
@@ -15,7 +15,7 @@ use zip::{CompressionMethod, ZipArchive};
 use crate::error::EpubError;
 
 #[cfg(feature = "builder")]
-pub const ELEMENT_IN_DC_NAMESPACE: std::sync::LazyLock<Vec<&str>> =
+pub static ELEMENT_IN_DC_NAMESPACE: std::sync::LazyLock<Vec<&str>> =
     std::sync::LazyLock::new(|| {
         vec![
             "contributor",
@@ -165,6 +165,17 @@ pub fn check_realtive_link_leakage(
         _ => format!("{}/{}", prefix_path, remaining),
     };
     Some(path)
+}
+
+/// Removes leading slash from a path
+///
+/// This function removes the leading slash from a path if it exists.
+pub fn remove_leading_slash<P: AsRef<Path>>(path: P) -> PathBuf {
+    if let Ok(path) = path.as_ref().strip_prefix("/") {
+        path.to_path_buf()
+    } else {
+        path.as_ref().to_path_buf()
+    }
 }
 
 /// Encrypts the font file using the IDPF font obfuscation algorithm

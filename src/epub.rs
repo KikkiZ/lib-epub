@@ -820,6 +820,43 @@ impl<R: Read + Seek> EpubDoc<R> {
         Err(EpubError::NoSupportedFileFormat)
     }
 
+    /// Retrieves the cover of the EPUB document
+    ///
+    /// This function searches for the cover of the EPUB document by examining manifest
+    /// items in the manifest. It looks for manifest items whose ID or attribute contains
+    /// "cover" (case-insensitive) and attempts to retrieve the content of the first match.
+    ///
+    /// # Return
+    /// - `Some((Vec<u8>, String))`: Successfully retrieved and decrypted cover data and
+    ///   the MIME type
+    /// - `None`: No cover resource was found
+    ///
+    /// # Notes
+    /// - This function only returns the first successfully retrieved cover resource,
+    ///   even if multiple matches exist
+    /// - The retrieved cover may not be an image resource; users need to pay attention
+    ///   to the resource's MIME type.
+    pub fn get_cover(&mut self) -> Option<(Vec<u8>, String)> {
+        self.manifest
+            .values()
+            .filter_map(|manifest| {
+                if manifest.id.to_ascii_lowercase().contains("cover") {
+                    return Some(manifest.id.clone());
+                }
+
+                if let Some(properties) = &manifest.properties {
+                    if properties.to_ascii_lowercase().contains("cover") {
+                        return Some(manifest.id.clone());
+                    }
+                }
+
+                None
+            })
+            .collect::<Vec<String>>()
+            .iter()
+            .find_map(|id| self.get_manifest_item(id).ok())
+    }
+
     /// Navigate to a specified chapter using the spine index
     ///
     /// This function retrieves the content data of the corresponding chapter based
@@ -2308,5 +2345,23 @@ mod tests {
                 .to_string(),
             "No supported file format: The fallback resource does not contain the file format you support."
         );
+    }
+
+    #[test]
+    fn test_get_cover() {
+        let epub_file = Path::new("./test_case/pkg-cover-image.epub");
+        let doc = EpubDoc::new(epub_file);
+        if let Err(err) = &doc {
+            println!("{}", err);
+        }
+        assert!(doc.is_ok());
+
+        let mut doc = doc.unwrap();
+        let result = doc.get_cover();
+        assert!(result.is_some());
+
+        let (data, mime) = result.unwrap();
+        assert_eq!(data.len(), 5785);
+        assert_eq!(mime, "image/jpeg");
     }
 }
