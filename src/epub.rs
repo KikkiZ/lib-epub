@@ -57,7 +57,7 @@ use crate::{
 /// file structure and parsing details. Strictly adheres to the EPUB specification
 /// in implementing the parsing logic to ensure compatibility with the standard.
 ///
-/// # Usage
+/// ## Usage
 ///
 /// ```rust
 /// use lib_epub::epub::EpubDoc;
@@ -125,16 +125,16 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// loading the OPF package document, and extracting metadata, manifest,
     /// reading order, and other core information.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `reader`: The data source that implements the `Read` and `Seek` traits,
     ///   usually a file or memory buffer
     /// - `epub_path`: The path to the EPUB file, used for path resolution and validation
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(EpubDoc<R>)`: The successfully parsed EPUB document object
     /// - `Err(EpubError)`: Errors encountered during parsing
     ///
-    /// # Notes
+    /// ## Notes
     /// - This function assumes the EPUB file structure is valid
     pub fn from_reader(reader: R, epub_path: PathBuf) -> Result<Self, EpubError> {
         // Parsing process
@@ -221,10 +221,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// the main OPF file. When multiple `rootfile` elements exist, the first
     /// element pointing to the OPF file is used as the default.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The content string of the container.xml
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(PathBuf)`: The path to the successfully parsed OPF file
     /// - `Err(EpubError)`: Errors encountered during parsing
     fn parse_container(data: String) -> Result<PathBuf, EpubError> {
@@ -255,7 +255,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - Elements in the Dublin Core namespace (`http://purl.org/dc/elements/1.1/`)
     /// - Elements in the OPF namespace (`http://www.idpf.org/2007/opf`)
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `metadata_element`: A reference to the `<metadata>` element in the OPF file
     fn parse_metadata(&mut self, metadata_element: &XmlElement) -> Result<(), EpubError> {
         const DC_NAMESPACE: &str = "http://purl.org/dc/elements/1.1/";
@@ -302,7 +302,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// basic information such as id, file path, MIME type, as well as optional
     /// attributes and fallback resource information.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `manifest_element`: A reference to the `<manifest>` element in the OPF file
     fn parse_manifest(&mut self, manifest_element: &XmlElement) -> Result<(), EpubError> {
         let estimated_items = manifest_element.children().count();
@@ -357,7 +357,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// linear reading order of the publication's content documents, and each
     /// spine item references resources in the manifest.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `spine_element`: A reference to the `<spine>` element in the OPF file
     fn parse_spine(&mut self, spine_element: &XmlElement) -> Result<(), EpubError> {
         let mut spine = Vec::new();
@@ -560,11 +560,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// encrypted, the corresponding encryption information must be declared in
     /// the `META-INF/encryption.xml` file.
     ///
-    /// # Return
+    /// ## Return
     /// - `true` if the publication contains encrypted resources
     /// - `false` if the publication does not contain encrypted resources
     ///
-    /// # Notes
+    /// ## Notes
     /// - This function only checks the existence of the encrypted file;
     ///   it does not verify the validity of the encrypted information.
     pub fn has_encryption(&mut self) -> bool {
@@ -580,10 +580,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// the DC (Dublin Core) namespace or the OPF namespace and contain basic
     /// information about the publication, such as title, author, identifier, etc.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `key`: The name of the metadata attribute to retrieve
     ///
-    /// # Return
+    /// ## Return
     /// - `Some(Vec<MetadataItem>)`: A vector containing all matching metadata items
     /// - `None`: If no matching metadata items are found
     pub fn get_metadata(&self, key: &str) -> Option<Vec<MetadataItem>> {
@@ -602,10 +602,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// This function retrieves the values ​​of all matching metadata items from
     /// the EPUB metadata based on the given property name (key).
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `key`: The name of the metadata attribute to retrieve
     ///
-    /// # Return
+    /// ## Return
     /// - `Some(Vec<String>)`: A vector containing all matching metadata item values
     /// - `None`: If no matching metadata items are found
     pub fn get_metadata_value(&self, key: &str) -> Option<Vec<String>> {
@@ -625,11 +625,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// According to the EPUB specification, a publication can have multiple titles,
     /// which are returned in the order they appear in the metadata.
     ///
-    /// # Return
+    /// ## Return
     /// - `Result<Vec<String>, EpubError>`: A vector containing all title information
     /// - `EpubError`: If and only if the OPF file does not contain `<dc:title>`
     ///
-    /// # Notes
+    /// ## Notes
     /// - The EPUB specification requires each publication to have at least one title.
     pub fn get_title(&self) -> Result<Vec<String>, EpubError> {
         self.get_metadata_value("title")
@@ -644,11 +644,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// metadata. According to the EPUB specification, language information identifies
     /// the primary language of the publication and can have multiple language identifiers.
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(Vec<String>)`: A vector containing all language identifiers
     /// - `Err(EpubError)`: If and only if the OPF file does not contain `<dc:language>`
     ///
-    /// # Notes
+    /// ## Notes
     /// - The EPUB specification requires that each publication specify at least one primary language.
     /// - Language identifiers should conform to RFC 3066 or later standards.
     pub fn get_language(&self) -> Result<Vec<String>, EpubError> {
@@ -664,11 +664,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// the EPUB metadata. According to the EPUB specification, each publication
     /// must have a identifier, typically an ISBN, UUID, or other unique identifier.
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(Vec<String>)`: A vector containing all identifier information
     /// - `Err(EpubError)`: If and only if the OPF file does not contain `<dc:identifier>`
     ///
-    /// # Notes
+    /// ## Notes
     /// - The EPUB specification requires each publication to have at least one identifier.
     /// - In the OPF file, the `unique-identifier` attribute of the `<package>` element
     ///   should point to a `<dc:identifier>` element used to uniquely identify the publication.
@@ -685,15 +685,15 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// This function will find the resource with the specified ID in the manifest.
     /// If the resource is encrypted, it will be automatically decrypted.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `id`: The ID of the resource to retrieve
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok((Vec<u8>, String))`: Successfully retrieved and decrypted resource data and
     ///   the MIME type
     /// - `Err(EpubError)`: Errors that occurred during the retrieval process
     ///
-    /// # Notes
+    /// ## Notes
     /// - This function will automatically decrypt the resource if it is encrypted.
     /// - For unsupported encryption methods, the corresponding error will be returned.
     pub fn get_manifest_item(&mut self, id: &str) -> Result<(Vec<u8>, String), EpubError> {
@@ -731,15 +731,15 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// The input path must be a relative path to the root directory of the EPUB container;
     /// using an absolute path or a relative path to another location will result in an error.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `path`: The path of the resource to retrieve
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok((Vec<u8>, String))`: Successfully retrieved and decrypted resource data and
     ///   the MIME type
     /// - `Err(EpubError)`: Errors that occurred during the retrieval process
     ///
-    /// # Notes
+    /// ## Notes
     /// - This function will automatically decrypt the resource if it is encrypted.
     /// - For unsupported encryption methods, the corresponding error will be returned.
     /// - Relative paths other than the root directory of the Epub container are not supported.
@@ -766,11 +766,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// format is not supported, it searches for a supported resource format along the
     /// fallback chain according to the fallback mechanism defined in the EPUB specification.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `id`: The ID of the resource to retrieve
     /// - `supported_format`: A vector of supported MIME types
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok((Vec<u8>, String))`: Successfully retrieved and decrypted resource data and
     ///   the MIME type
     /// - `Err(EpubError)`: Errors that occurred during the retrieval process
@@ -826,12 +826,12 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// items in the manifest. It looks for manifest items whose ID or attribute contains
     /// "cover" (case-insensitive) and attempts to retrieve the content of the first match.
     ///
-    /// # Return
+    /// ## Return
     /// - `Some((Vec<u8>, String))`: Successfully retrieved and decrypted cover data and
     ///   the MIME type
     /// - `None`: No cover resource was found
     ///
-    /// # Notes
+    /// ## Notes
     /// - This function only returns the first successfully retrieved cover resource,
     ///   even if multiple matches exist
     /// - The retrieved cover may not be an image resource; users need to pay attention
@@ -864,14 +864,14 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// order of the publication's content documents, and each spine item references
     /// resources in the manifest.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `index`: The index position in the spine, starting from 0
     ///
-    /// # Return
+    /// ## Return
     /// - `Some((Vec<u8>, String))`: Successfully retrieved chapter content data and the MIME type
     /// - `None`: Index out of range or data retrieval error
     ///
-    /// # Notes
+    /// ## Notes
     /// - The index must be less than the total number of spine projects.
     /// - If the resource is encrypted, it will be automatically decrypted before returning.(TODO)
     /// - It does not check whether the Spine project follows a linear reading order.
@@ -891,7 +891,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// reading chapter and returns the content data of that chapter. It only navigates
     /// to chapters marked as linear reading.
     ///
-    /// # Return
+    /// ## Return
     /// - `Some((Vec<u8>, String))`: Successfully retrieved previous chapter content data and
     ///   the MIME type
     /// - `None`: Already in the first chapter, the current chapter is not linear,
@@ -916,7 +916,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// chapter and returns the content data of that chapter. It only navigates to
     /// chapters marked as linear reading.
     ///
-    /// # Return
+    /// ## Return
     /// - `Some((Vec<u8>, String))`: Successfully retrieved next chapter content data and
     ///   the MIME type
     /// - `None`: Already in the last chapter, the current chapter is not linear,
@@ -941,7 +941,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// This function returns the content data of the chapter at the current
     /// index position in the EPUB spine.
     ///
-    /// # Return
+    /// ## Return
     /// - `Some((Vec<u8>, String))`: Successfully retrieved current chapter content data and
     ///   the MIME type
     /// - `None`: Data retrieval failed
@@ -957,7 +957,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// be identified through some version characteristics of the epub file. An error is
     /// returned when neither direct nor indirect methods can identify the version.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `opf_element`: A reference to the OPF file element
     fn determine_epub_version(opf_element: &XmlElement) -> Result<EpubVersion, EpubError> {
         // Check the explicit version attribute
@@ -1009,7 +1009,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// is "http://purl.org/dc/elements/1.1/"). These elements usually contain the basic
     /// information of the publication, such as title, author, publication date, etc.
     ///
-    /// # Notes
+    /// ## Notes
     /// - In EPUB 3.0, granular information is handled by separate '<meta>' elements and 'refines' attributes
     /// - All text content is normalized by whitespace
     #[inline]
@@ -1063,7 +1063,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// is "http://www.idpf.org/2007/opf"). These elements include '<meta>' and '<link>',
     /// which are used to provide extended metadata and links to external resources for EPUB publications.
     ///
-    /// # Notes
+    /// ## Notes
     /// - The function is only responsible for distribution processing, and the
     ///   specific parsing logic is implemented in the dedicated function
     /// - All parsing results are added directly to the incoming collection and no new collection is returned
@@ -1276,10 +1276,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - Absolute paths starting with `/` (relative to the EPUB root directory)
     /// - Other relative paths (relative to the directory containing the OPF file)
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `path`: The href attribute value of the resource in the manifest
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(PathBuf)`: The parsed normalized path
     /// - `Err(EpubError)`: Relative link leakage
     #[inline]
@@ -1314,7 +1314,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - Whether circular references exist
     /// - Whether the fallback resource exists in the manifest
     ///
-    /// # Notes
+    /// ## Notes
     /// If an invalid fallback chain is found, a warning log will be logged
     /// but the processing flow will not be interrupted.
     fn validate_fallback_chains(&self) {
@@ -1336,11 +1336,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - Circular reference
     /// - The referenced fallback resource does not exist
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `manifest_id`: The id of the manifest item currently being verified
     /// - `fallback_chain`: The visited fallback chain paths used to detect circular references
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(())`: The fallback chain is valid
     /// - `Err(String)`: A string containing error information
     fn validate_fallback_chain(
@@ -1382,10 +1382,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// file in the EPUB encryption information. It checks the encrypted data stored in
     /// `self.encryption`, looking for an entry that matches the given path.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `path`: The path of the resource to check
     ///
-    /// # Return
+    /// ## Return
     /// - `Some(String)`: The encryption method used for the resource
     /// - `None`: The resource is not encrypted
     fn is_encryption_file(&self, path: &str) -> Option<String> {
@@ -1403,15 +1403,15 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// This function supports various encryption methods defined by the EPUB
     /// specification, including font obfuscation and the XML encryption standard.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `method`: The encryption method used for the resource
     /// - `data`: The encrypted resource data
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(Vec<u8>)`: The decrypted resource data
     /// - `Err(EpubError)`: Unsupported encryption method
     ///
-    /// # Supported Encryption Methods
+    /// ## Supported Encryption Methods
     /// - IDPF font obfuscation: `http://www.idpf.org/2008/embedding`
     /// - Adobe font obfuscation: `http://ns.adobe.com/pdf/enc#RC`
     #[inline]
@@ -1436,10 +1436,10 @@ impl EpubDoc<BufReader<File>> {
     /// This function is a convenience constructor for `EpubDoc`,
     /// used to create an EPUB parser instance directly from a file path.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `path`: The path to the EPUB file
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(EpubDoc)`: The created EPUB document instance
     /// - `Err(EpubError)`: An error occurred during initialization
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, EpubError> {

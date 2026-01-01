@@ -51,7 +51,7 @@ pub enum EpubVersion {
 /// the main metadata item. For example, a title metadata item might have refinements that
 /// specify it is the main title of the publication.
 ///
-/// # Builder Methods
+/// ## Builder Methods
 ///
 /// When the `builder` feature is enabled, this struct provides convenient builder methods:
 ///
@@ -102,7 +102,7 @@ impl MetadataItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `property` - The metadata property name (e.g., "title", "creator")
     /// - `value` - The metadata value
     pub fn new(property: &str, value: &str) -> Self {
@@ -119,7 +119,7 @@ impl MetadataItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `id` - The ID to assign to this metadata item
     pub fn with_id(&mut self, id: &str) -> &mut Self {
         self.id = Some(id.to_string());
@@ -130,7 +130,7 @@ impl MetadataItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `lang` - The language code (e.g., "en", "fr", "zh-CN")
     pub fn with_lang(&mut self, lang: &str) -> &mut Self {
         self.lang = Some(lang.to_string());
@@ -141,10 +141,10 @@ impl MetadataItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `refine` - The refinement to add
     ///
-    /// # Notes
+    /// ## Notes
     /// - The metadata item must have an ID for refinements to be added.
     pub fn append_refinement(&mut self, refine: MetadataRefinement) -> &mut Self {
         if self.id.is_some() {
@@ -192,7 +192,7 @@ impl MetadataItem {
 /// For example, a creator metadata item might have refinements specifying the creator's role
 /// or the scheme used for an identifier.
 ///
-/// # Builder Methods
+/// ## Builder Methods
 ///
 /// When the `builder` feature is enabled, this struct provides convenient builder methods:
 ///
@@ -235,7 +235,7 @@ impl MetadataRefinement {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `refines` - The ID of the metadata item being refined
     /// - `property` - The refinement property name
     /// - `value` - The refinement value
@@ -253,7 +253,7 @@ impl MetadataRefinement {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `lang` - The language code
     pub fn with_lang(&mut self, lang: &str) -> &mut Self {
         self.lang = Some(lang.to_string());
@@ -264,7 +264,7 @@ impl MetadataRefinement {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `scheme` - The scheme identifier
     pub fn with_scheme(&mut self, scheme: &str) -> &mut Self {
         self.scheme = Some(scheme.to_string());
@@ -352,7 +352,7 @@ pub struct MetadataLinkItem {
 /// to be specified. This is particularly important for foreign resources (resources with
 /// non-core media types) that may not be supported by all reading systems.
 ///
-/// # Builder Methods
+/// ## Builder Methods
 ///
 /// When the `builder` feature is enabled, this struct provides convenient builder methods:
 ///
@@ -409,11 +409,11 @@ impl ManifestItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `id` - The unique identifier for this resource
     /// - `path` - The path to the resource file
     ///
-    /// # Errors
+    /// ## Errors
     /// Returns an error if the path starts with "../" which is not allowed.
     pub fn new(id: &str, path: &str) -> Result<Self, EpubError> {
         if path.starts_with("../") {
@@ -447,7 +447,7 @@ impl ManifestItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `property` - The property to add
     pub fn append_property(&mut self, property: &str) -> &mut Self {
         let new_properties = if let Some(properties) = &self.properties {
@@ -464,7 +464,7 @@ impl ManifestItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `fallback` - The ID of the fallback manifest item
     pub fn with_fallback(&mut self, fallback: &str) -> &mut Self {
         self.fallback = Some(fallback.to_string());
@@ -509,7 +509,7 @@ impl ManifestItem {
 /// reading order of content documents. Items can be marked as linear (part of the main reading
 /// flow) or non-linear (supplementary content that may be accessed out of sequence).
 ///
-/// # Builder Methods
+/// ## Builder Methods
 ///
 /// When the `builder` feature is enabled, this struct provides convenient builder methods:
 ///
@@ -563,7 +563,7 @@ impl SpineItem {
     ///
     /// By default, spine items are linear.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `idref` - The ID of the manifest item this spine item references
     pub fn new(idref: &str) -> Self {
         Self {
@@ -578,7 +578,7 @@ impl SpineItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `id` - The ID to assign to this spine item
     pub fn with_id(&mut self, id: &str) -> &mut Self {
         self.id = Some(id.to_string());
@@ -589,7 +589,7 @@ impl SpineItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `property` - The property to add
     pub fn append_property(&mut self, property: &str) -> &mut Self {
         let new_properties = if let Some(properties) = &self.properties {
@@ -606,7 +606,7 @@ impl SpineItem {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `linear` - `true` if the item is part of the linear reading order, `false` otherwise
     pub fn set_linear(&mut self, linear: bool) -> &mut Self {
         self.linear = linear;
@@ -667,7 +667,7 @@ pub struct EncryptionData {
 /// of an EPUB publication. Each navigation point corresponds to a section or chapter in
 /// the publication and may contain nested child navigation points to represent sub-sections.
 ///
-/// # Builder Methods
+/// ## Builder Methods
 ///
 /// When the `builder` feature is enabled, this struct provides convenient builder methods:
 ///
@@ -714,7 +714,7 @@ impl NavPoint {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `label` - The display label for this navigation point
     pub fn new(label: &str) -> Self {
         Self {
@@ -729,7 +729,7 @@ impl NavPoint {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `content` - The path to the content document
     pub fn with_content(&mut self, content: &str) -> &mut Self {
         self.content = Some(PathBuf::from(content));
@@ -740,7 +740,7 @@ impl NavPoint {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `child` - The child navigation point to add
     pub fn append_child(&mut self, child: NavPoint) -> &mut Self {
         self.children.push(child);
@@ -751,7 +751,7 @@ impl NavPoint {
     ///
     /// Requires the `builder` feature.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `children` - Vector of child navigation points
     pub fn set_children(&mut self, children: Vec<NavPoint>) -> &mut Self {
         self.children = children;

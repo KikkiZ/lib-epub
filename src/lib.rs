@@ -7,27 +7,36 @@
 //! This library provides complete EPUB file parsing functionality,
 //! supporting EPUB 2 and EPUB 3 formats. It can extract metadata,
 //! access content files, and handle encrypted resources.
+//! Furthermore, this library also provides a convenient way to build
+//! epub files from a set of resources.
 //!
 //! ## Features
 //!
-//! - Parse EPUB file structure and containers
-//! - Extract book metadata (title, author, language, etc.)
-//! - Access content files and resource files
-//! - Handle encrypted content (font obfuscation, etc.; currently incomplete,
-//!   will be improved in future versions)
-//! - Optional EPUB build functionality (via the `builder` attribute)
-//! - EPUB specification-compliant verification mechanism
+//! - Parse EPUB file structure and containers, extract metadata, access resource files.
+//! - Automatic handle encrypted content.
+//! - Optional EPUB build functionality via 'builder' feature.
+//! - EPUB specification-compliant verification mechanism.
 //!
 //! ## Quick Start
 //!
 //! ### Read EPUB Files
 //!
 //! ```rust, ignore
-//! use lib_epub::epub::EpubDoc;
+//! # use lib_epub::epub::EpubDoc;
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Open EPUB file
+//! let doc = EpubDoc::new("path/to/epub/file.epub")?;
 //!
-//! let doc = EpubDoc::new("path/to/book.epub")?;
-//! let title = doc.get_title()?;
-//! println!("Title: {}", title);
+//! // Get metadata
+//! println!("Title: {:?}", doc.get_title()?);
+//! println!("Creator: {:?}", doc.get_metadata_value("creator")?);
+//!
+//! // Read content
+//! let (_content, _mime) = doc.spine_current()?;
+//! let (_content, _mime) = doc.next_spine()?;
+//!
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ### Enable Builder Feature
@@ -36,7 +45,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! lib-epub = { version = "0.0.2", features = ["builder"] }
+//! lib-epub = { version = "0.0.5", features = ["builder"] }
 //! ```
 //!
 //! ## Module Description

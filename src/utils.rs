@@ -48,16 +48,16 @@ pub fn local_time() -> String {
 /// is essentially a ZIP archive). This is a fundamental utility function for handling
 /// files within an EPUB (such as OPF, NCX, container files, etc.).
 ///
-/// # Parameters
+/// ## Parameters
 /// - `zip_file`: A mutable reference to a ZIP archive object
 /// - `file_name`: The path to the file to extract (relative to the ZIP archive root directory)
 ///
-/// # Return
+/// ## Return
 /// - `Ok(Vec<u8>)`: Returns a byte vector containing the file data
 ///   if the file content was successfully read
 /// - `Err(EpubError)`: The file does not exist or an error occurred during the read operation
 ///
-/// # Notes
+/// ## Notes
 /// - The returned data is raw bytes; the caller needs to perform
 ///   appropriate decoding based on the file type.
 /// - For text files, further decoding using the `DecodeBytes` trait is usually required.
@@ -82,14 +82,14 @@ pub fn get_file_in_zip_archive<R: Read + Seek>(
 /// can only use either Stored (uncompressed) or Deflated (deflate compression).
 /// If any other compression method is found, an error will be returned.
 ///
-/// # Parameters
+/// ## Parameters
 /// - `zip_archive`: The ZIP archive to check.
 ///
-/// # Return
+/// ## Return
 /// - `Ok(())`: All files use the supported compression method
 /// - `Err(EpubError)`: Unsupported compression method found
 ///
-/// # Specification Reference
+/// ## Specification Reference
 /// According to the EPUB OCF 3.2 specification: "OCF ZIP containers
 /// MUST only use compression techniques that are supported
 /// by the ZIP format specification (ISO/IEC 21320-1)"
@@ -121,12 +121,12 @@ pub fn compression_method_check<R: Read + Seek>(
 /// navigation by calculating the level of "../", and then verifies that
 /// the final path is still within the EPUB package scope.
 ///
-/// # Parameters
+/// ## Parameters
 /// - `epub_path`: The root path of the EPUB file
 /// - `current_dir`: The directory path where the current file is located
 /// - `check_file`: The relative path to check
 ///
-/// # Return
+/// ## Return
 /// - `Some(String)`: The parsed normalized path string, if the link is within the EPUB package scope
 /// - `None`: If the link is outside the EPUB package scope or an error occurs
 pub fn check_realtive_link_leakage(
@@ -170,6 +170,7 @@ pub fn check_realtive_link_leakage(
 /// Removes leading slash from a path
 ///
 /// This function removes the leading slash from a path if it exists.
+#[cfg(feature = "builder")]
 pub fn remove_leading_slash<P: AsRef<Path>>(path: P) -> PathBuf {
     if let Ok(path) = path.as_ref().strip_prefix("/") {
         path.to_path_buf()
@@ -184,14 +185,14 @@ pub fn remove_leading_slash<P: AsRef<Path>>(path: P) -> PathBuf {
 /// with the publication's unique identifier. Due to the integrability of the XOR
 /// operation (A XOR B XOR B = A), encryption and decryption use the same algorithm.
 ///
-/// # Parameters
+/// ## Parameters
 /// - `data`: Original font data
 /// - `key`: The unique identifier of the EPUB publication
 ///
-/// # Return
+/// ## Return
 /// - `Vec<u8>`: Encrypted font data
 ///
-/// # Notes
+/// ## Notes
 /// - This function applies to the IDPF font obfuscation algorithm
 ///   (http://www.idpf.org/2008/embedding).
 /// - Only processes the first 1040 bytes of the font file; the rest remains unchanged.
@@ -223,11 +224,11 @@ pub fn idpf_font_encryption(data: &[u8], key: &str) -> Vec<u8> {
 /// with the publication's unique identifier. Due to the integrability of the XOR
 /// operation (A XOR B XOR B = A), encryption and decryption use the same algorithm.
 ///
-/// # Parameters
+/// ## Parameters
 /// - `data`: Original font data
 /// - `key`: The unique identifier of the EPUB publication
 ///
-/// # Return
+/// ## Return
 /// - `Vec<u8>`: Decrypted font data
 pub fn idpf_font_dencryption(data: &[u8], key: &str) -> Vec<u8> {
     idpf_font_encryption(data, key)
@@ -240,14 +241,14 @@ pub fn idpf_font_dencryption(data: &[u8], key: &str) -> Vec<u8> {
 /// integrability of the XOR operation (A XOR B XOR B = A), encryption and decryption
 /// use the same algorithm.
 ///
-/// # Parameters
+/// ## Parameters
 /// - `data`: Original font data to be obfuscated
 /// - `key`: The unique identifier of the EPUB publication
 ///
-/// # Return
+/// ## Return
 /// - `Vec<u8>`: Obfuscated font data
 ///
-/// # Notes
+/// ## Notes
 /// - This function applies to the adobe font obfuscation algorithm
 ///   (http://ns.adobe.com/pdf/enc#RC).
 /// - Only processes the first 1024 bytes of the font file; the rest remains unchanged.
@@ -278,11 +279,11 @@ pub fn adobe_font_encryption(data: &[u8], key: &str) -> Vec<u8> {
 /// integrability of the XOR operation (A XOR B XOR B = A), encryption and decryption
 /// use the same algorithm.
 ///
-/// # Parameters
+/// ## Parameters
 /// - `data`: Obfuscated font data
 /// - `key`: The unique identifier of the EPUB publication
 ///
-/// # Return
+/// ## Return
 /// - `Vec<u8>`: Deobfuscated font data
 pub fn adobe_font_dencryption(data: &[u8], key: &str) -> Vec<u8> {
     adobe_font_encryption(data, key)
@@ -298,15 +299,15 @@ mod unused_method {
     /// This function encrypts the provided data using the AES-128 algorithm
     /// in CBC mode, following the XML Encryption specification.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The raw byte data to encrypt
     /// - `key`: The encryption key string which will be processed to
     ///   generate the actual encryption key
     ///
-    /// # Return
+    /// ## Return
     /// - `Vec<u8>`: The encrypted data
     ///
-    /// # Notes
+    /// ## Notes
     /// - Uses SHA-256 hashing to derive a 16-byte key from the provided key string
     /// - Implements http://www.w3.org/2001/04/xmlenc#aes128-cbc algorithm
     pub fn xml_encryption_aes128_cbc(data: &[u8], key: &str) -> Vec<u8> {
@@ -318,12 +319,12 @@ mod unused_method {
     /// This function decrypts the provided data using the AES-128 algorithm
     /// in CBC mode, following the XML Encryption specification.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The encrypted byte data to decrypt
     /// - `key`: The decryption key string which will be processed to
     ///   generate the actual decryption key
     ///
-    /// # Return
+    /// ## Return
     /// - `Vec<u8>`: The decrypted data
     pub fn xml_decryption_aes128_cbc(data: &[u8], key: &str) -> Vec<u8> {
         xml_encryotion_algorithm(data, key, 16)
@@ -334,15 +335,15 @@ mod unused_method {
     /// This function encrypts the provided data using the AES-192 algorithm
     /// in CBC mode, following the XML Encryption specification.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The raw byte data to encrypt
     /// - `key`: The encryption key string which will be processed to
     ///   generate the actual encryption key
     ///
-    /// # Return
+    /// ## Return
     /// - `Vec<u8>`: The encrypted data
     ///
-    /// # Notes
+    /// ## Notes
     /// - Uses SHA-256 hashing to derive a 24-byte key from the provided key string
     /// - Implements http://www.w3.org/2001/04/xmlenc#aes192-cbc algorithm
     pub fn xml_encryption_aes192_cbc(data: &[u8], key: &str) -> Vec<u8> {
@@ -354,12 +355,12 @@ mod unused_method {
     /// This function decrypts the provided data using the AES-192 algorithm
     /// in CBC mode, following the XML Encryption specification.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The encrypted byte data to decrypt
     /// - `key`: The decryption key string which will be processed to
     ///   generate the actual decryption key
     ///
-    /// # Return
+    /// ## Return
     /// - `Vec<u8>`: The decrypted data
     pub fn xml_decryption_aes192_cbc(data: &[u8], key: &str) -> Vec<u8> {
         xml_encryotion_algorithm(data, key, 24)
@@ -370,15 +371,15 @@ mod unused_method {
     /// This function encrypts the provided data using the AES-256 algorithm
     /// in CBC mode, following the XML Encryption specification.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The raw byte data to encrypt
     /// - `key`: The encryption key string which will be processed to
     ///   generate the actual encryption key
     ///
-    /// # Return
+    /// ## Return
     /// - `Vec<u8>`: The encrypted data
     ///
-    /// # Notes
+    /// ## Notes
     /// - Uses SHA-256 hashing to derive a 32-byte key from the provided key string
     /// - Implements http://www.w3.org/2001/04/xmlenc#aes256-cbc algorithm
     pub fn xml_encryption_aes256_cbc(data: &[u8], key: &str) -> Vec<u8> {
@@ -390,12 +391,12 @@ mod unused_method {
     /// This function decrypts the provided data using the AES-256 algorithm
     /// in CBC mode, following the XML Encryption specification.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The encrypted byte data to decrypt
     /// - `key`: The decryption key string which will be processed to
     ///   generate the actual decryption key
     ///
-    /// # Return
+    /// ## Return
     /// - `Vec<u8>`: The decrypted data
     pub fn xml_decryption_aes256_cbc(data: &[u8], key: &str) -> Vec<u8> {
         xml_encryotion_algorithm(data, key, 32)
@@ -406,12 +407,12 @@ mod unused_method {
     /// This function performs XOR-based encryption/decryption on the provided data
     /// using a key derived from the provided key string via SHA-256 hashing.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `data`: The raw byte data to process
     /// - `key`: The key string which will be processed to generate the actual encryption/decryption key
     /// - `key_size`: The desired size of the key in bytes (16 for AES-128, 24 for AES-192, 32 for AES-256)
     ///
-    /// # Return
+    /// ## Return
     /// - `Vec<u8>`: The processed data (encrypted or decrypted)
     fn xml_encryotion_algorithm(data: &[u8], key: &str, key_size: usize) -> Vec<u8> {
         if data.is_empty() {
@@ -438,11 +439,11 @@ mod unused_method {
 /// It supports automatic detection of multiple encoding formats,
 /// including UTF-8 (with or without BOM), UTF-16 BE, and UTF-16 LE.
 ///
-/// # Implementation
+/// ## Implementation
 /// Currently, this trait is implemented for the `Vec<u8>` type,
 /// primarily used for processing text content in EPUB files.
 ///
-/// # Notes
+/// ## Notes
 /// - When attempting to parse a byte stream lacking a BOM (Byte Order Mark), the parsing
 ///   results may be unreadable; caution should be exercised when using such streams.
 pub trait DecodeBytes {
@@ -526,7 +527,7 @@ impl DecodeBytes for Vec<u8> {
 /// (including spaces, tabs, newlines, etc.) in a string into a single
 /// whitespace character, removing leading and trailing whitespace characters.
 ///
-/// # Implementation
+/// ## Implementation
 /// This trait is implemented for both `&str` and `String` types.
 pub trait NormalizeWhitespace {
     fn normalize_whitespace(&self) -> String;
@@ -693,10 +694,10 @@ impl XmlReader {
     /// This function takes an XML string, parses its content using the `quick_xml` library,
     /// and builds an `XmlElement` tree representing the structure of the entire XML document.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `content`: The XML string to be parsed
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(XmlElement)`: The root element of the XML element tree
     /// - `Err(EpubError)`: An error occurred during parsing
     pub fn parse(content: &str) -> Result<XmlElement, EpubError> {
@@ -840,7 +841,7 @@ impl XmlReader {
 
     /// Assign namespace to element recursively
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `element`: The element to assign namespace
     /// - `namespace_map`: The prefix-namespace map
     fn assign_namespace(element: &mut XmlElement, namespace_map: &HashMap<String, String>) {

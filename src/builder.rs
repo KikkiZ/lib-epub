@@ -33,9 +33,6 @@
 //! ## Notes
 //!
 //! - Requires `builder` functionality to use this module.
-//! - Files will be manipulated in a temporary directory during the build process;
-//!   automatic cleanup will occur upon completion
-//! - All resource files must exist on the local file system.
 
 use std::{
     collections::HashMap,
@@ -74,6 +71,46 @@ pub struct EpubVersion3;
 ///
 /// The main structure used to create and build EPUB ebook files.
 /// Supports the EPUB 3.0 specification and can build a complete EPUB file structure.
+///
+/// ## Usage
+///
+/// ```rust, no_run
+/// # #[cfg(feature = "builder")]
+/// # fn main() -> Result<(), lib_epub::error::EpubError> {
+/// use lib_epub::{
+///     builder::{EpubBuilder, EpubVersion3},
+///     types::{MetadataItem, ManifestItem, NavPoint, SpineItem},
+/// };
+///
+/// let mut builder = EpubBuilder::<EpubVersion3>::new()?;
+///
+/// builder
+///     .add_rootfile("EPUB/content.opf")?
+///     .add_metadata(MetadataItem::new("title", "Test Book"))
+///     .add_metadata(MetadataItem::new("language", "en"))
+///     .add_metadata(
+///         MetadataItem::new("identifier", "unique-id")
+///             .with_id("pub-id")
+///             .build(),
+///     )
+///     .add_manifest(
+///         "./test_case/Overview.xhtml",
+///         ManifestItem::new("content", "target/path")?,
+///     )?
+///     .add_spine(SpineItem::new("content"))
+///     .add_catalog_item(NavPoint::new("label"));
+///
+/// builder.build("output.epub")?;
+///
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Notes
+/// 
+/// - All resource files **must** exist on the local file system.
+/// - **At least one rootfile** must be added before adding manifest items.
+/// - Requires at least one `title`, `language`, and `identifier` with id `pub-id`.
 pub struct EpubBuilder<Version> {
     /// EPUB version placeholder
     epub_version: PhantomData<Version>,
@@ -102,7 +139,7 @@ pub struct EpubBuilder<Version> {
 impl EpubBuilder<EpubVersion3> {
     /// Create a new `EpubBuilder` instance
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(EpubBuilder)`: Builder instance created successfully
     /// - `Err(EpubError)`: Error occurred during builder initialization
     pub fn new() -> Result<Self, EpubError> {
@@ -132,10 +169,10 @@ impl EpubBuilder<EpubVersion3> {
     /// The added path points to an OPF file that does not yet exist
     /// and will be created when building the Epub file.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `rootfile`: Rootfile path
     ///
-    /// # Notes
+    /// ## Notes
     /// - The added rootfile path must be a relative path and cannot start with "../".
     /// - At least one rootfile must be added before adding metadata items.
     pub fn add_rootfile(&mut self, rootfile: &str) -> Result<&mut Self, EpubError> {
@@ -157,7 +194,7 @@ impl EpubBuilder<EpubVersion3> {
     /// Required metadata includes title, language, and an identifier with 'pub-id'.
     /// Missing this data will result in an error when building the epub file.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `item`: Metadata items to add
     pub fn add_metadata(&mut self, item: MetadataItem) -> &mut Self {
         self.metadata.push(item);
@@ -169,15 +206,15 @@ impl EpubBuilder<EpubVersion3> {
     /// The builder will automatically recognize the file type of
     /// the added resource and update it in `ManifestItem`.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `manifest_source` - Local resource file path
     /// - `manifest_item` - Manifest item information
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(&mut Self)` - Successful addition, returns a reference to itself
     /// - `Err(EpubError)` - Error occurred during the addition process
     ///
-    /// # Notes
+    /// ## Notes
     /// - At least one rootfile must be added before adding manifest items.
     pub fn add_manifest(
         &mut self,
@@ -238,7 +275,7 @@ impl EpubBuilder<EpubVersion3> {
     ///
     /// The spine item defines the reading order of the book.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `item`: Spine item to add
     pub fn add_spine(&mut self, item: SpineItem) -> &mut Self {
         self.spine.push(item);
@@ -247,7 +284,7 @@ impl EpubBuilder<EpubVersion3> {
 
     /// Set catalog title
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `title`: Catalog title
     pub fn set_catalog_title(&mut self, title: &str) -> &mut Self {
         self.catalog_title = title.to_string();
@@ -258,7 +295,7 @@ impl EpubBuilder<EpubVersion3> {
     ///
     /// Added directory items will be added to the end of the existing list.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `item`: Catalog item to add
     pub fn add_catalog_item(&mut self, item: NavPoint) -> &mut Self {
         self.catalog.push(item);
@@ -269,7 +306,7 @@ impl EpubBuilder<EpubVersion3> {
     ///
     /// The passed list will overwrite existing data.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `catalog`: Catalog to set
     pub fn set_catalog(&mut self, catalog: Vec<NavPoint>) -> &mut Self {
         self.catalog = catalog;
@@ -278,10 +315,10 @@ impl EpubBuilder<EpubVersion3> {
 
     /// Builds an EPUB file and saves it to the specified path
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `output_path`: Output file path
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(())`: Build successful
     /// - `Err(EpubError)`: Error occurred during the build process
     pub fn make<P: AsRef<Path>>(mut self, output_path: P) -> Result<(), EpubError> {
@@ -330,10 +367,10 @@ impl EpubBuilder<EpubVersion3> {
     ///
     /// Builds an EPUB file at the specified location and parses it into a usable EpubDoc object.
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `output_path`: Output file path
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(EpubDoc)`: Build successful
     /// - `Err(EpubError)`: Error occurred during the build process
     pub fn build<P: AsRef<Path>>(
@@ -360,14 +397,14 @@ impl EpubBuilder<EpubVersion3> {
     /// - Catalog title
     /// - All manifest items (except those with 'nav' property, which are skipped)
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `doc`: A mutable reference to an `EpubDoc` instance that contains the parsed EPUB data
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(EpubBuilder)`: Successfully created builder instance populated with the document's data
     /// - `Err(EpubError)`: Error occurred during the extraction process
     ///
-    /// # Notes
+    /// ## Notes
     /// - This type of conversion will upgrade Epub2.x publications to Epub3.x.
     ///   This upgrade conversion may encounter unknown errors (it is unclear whether
     ///   it will cause errors), so please use it with caution.
@@ -506,7 +543,7 @@ impl EpubBuilder<EpubVersion3> {
 
     /// Creates the `OPF` file
     ///
-    /// # Error conditions
+    /// ## Error conditions
     /// - Missing necessary metadata
     /// - Circular reference exists in the manifest backlink
     /// - Navigation information is not initialized
@@ -737,11 +774,11 @@ impl EpubBuilder<EpubVersion3> {
     /// - Relative paths starting with "./" (current directory)
     /// - Plain relative paths (relative to the OPF file location)
     ///
-    /// # Parameters
+    /// ## Parameters
     /// - `path`: The input path that may be relative or absolute. Can be any type that
     ///   implements `AsRef<Path>`, such as `&str`, `String`, `Path`, `PathBuf`, etc.
     ///
-    /// # Return
+    /// ## Return
     /// - `Ok(PathBuf)`: The normalized absolute path within the EPUB container,
     ///   and the absolute path is not starting with "/"
     /// - `Err(EpubError)`: Error if path traversal is detected outside the EPUB container,
