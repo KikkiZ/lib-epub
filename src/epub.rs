@@ -1452,9 +1452,13 @@ impl EpubDoc<BufReader<File>> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{
+        fs::File,
+        io::BufReader,
+        path::{Path, PathBuf},
+    };
 
-    use crate::epub::EpubDoc;
+    use crate::{epub::EpubDoc, error::EpubError, utils::XmlReader};
 
     /// Section 3.3 package documents
     mod package_documents_tests {
@@ -2212,6 +2216,143 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parse_container() {
+        let epub_file = Path::new("./test_case/ocf-zip-mult.epub");
+        let doc = EpubDoc::new(epub_file);
+        assert!(doc.is_ok());
+
+        // let doc = doc.unwrap();
+        let container = r#"
+        <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+            <rootfiles></rootfiles>
+        </container>
+        "#
+        .to_string();
+
+        let result = EpubDoc::<BufReader<File>>::parse_container(container);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubError::NonCanonicalFile {
+                tag: "rootfile".to_string()
+            }
+        );
+
+        let container = r#"
+        <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+            <rootfiles>
+                <rootfile media-type="application/oebps-package+xml"/>
+            </rootfiles>
+        </container>
+        "#
+        .to_string();
+
+        let result = EpubDoc::<BufReader<File>>::parse_container(container);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubError::MissingRequiredAttribute {
+                tag: "rootfile".to_string(),
+                attribute: "full-path".to_string(),
+            }
+        );
+
+        let container = r#"
+        <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+            <rootfiles>
+                <rootfile media-type="application/oebps-package+xml" full-path="EPUB/content.opf"/>
+            </rootfiles>
+        </container>
+        "#
+        .to_string();
+
+        let result = EpubDoc::<BufReader<File>>::parse_container(container);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), PathBuf::from("EPUB/content.opf"))
+    }
+
+    #[test]
+    fn test_parse_manifest() {
+        let epub_file = Path::new("./test_case/ocf-package_multiple.epub");
+        let doc = EpubDoc::new(epub_file);
+        assert!(doc.is_ok());
+
+        let manifest = r#"
+        <manifest>
+            <item href="content_001.xhtml" media-type="application/xhtml+xml"/>
+            <item properties="nav" href="nav.xhtml" media-type="application/xhtml+xml"/>
+        </manifest>
+        "#;
+        let mut doc = doc.unwrap();
+        let element = XmlReader::parse(manifest);
+        assert!(element.is_ok());
+
+        let element = element.unwrap();
+        let result = doc.parse_manifest(&element);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubError::MissingRequiredAttribute {
+                tag: "item".to_string(),
+                attribute: "id".to_string(),
+            },
+        );
+
+        let manifest = r#"
+        <manifest>
+            <item id="content_001" media-type="application/xhtml+xml"/>
+            <item id="nav" properties="nav" media-type="application/xhtml+xml"/>
+        </manifest>
+        "#;
+        let element = XmlReader::parse(manifest);
+        assert!(element.is_ok());
+
+        let element = element.unwrap();
+        let result = doc.parse_manifest(&element);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubError::MissingRequiredAttribute {
+                tag: "item".to_string(),
+                attribute: "href".to_string(),
+            },
+        );
+
+        let manifest = r#"
+        <manifest>
+            <item id="content_001" href="content_001.xhtml"/>
+            <item id="nav" properties="nav" href="nav.xhtml"/>
+        </manifest>
+        "#;
+        let element = XmlReader::parse(manifest);
+        assert!(element.is_ok());
+
+        let element = element.unwrap();
+        let result = doc.parse_manifest(&element);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubError::MissingRequiredAttribute {
+                tag: "item".to_string(),
+                attribute: "media-type".to_string(),
+            },
+        );
+
+        let manifest = r#"
+        <manifest>
+            <item id="content_001" href="content_001.xhtml" media-type="application/xhtml+xml"/>
+            <item id="nav" properties="nav" href="nav.xhtml" media-type="application/xhtml+xml"/>
+        </manifest>
+        "#;
+        let element = XmlReader::parse(manifest);
+        assert!(element.is_ok());
+
+        let element = element.unwrap();
+        let result = doc.parse_manifest(&element);
+        assert!(result.is_ok());
+    }
+
     /// Test for function `has_encryption`
     #[test]
     fn test_fn_has_encryption() {
@@ -2262,6 +2403,10 @@ mod tests {
         assert_eq!(languages.len(), 1);
         assert_eq!(languages[0].property, "language");
         assert_eq!(languages[0].value, "en-us");
+
+        let language = doc.get_language();
+        assert!(language.is_ok());
+        assert_eq!(language.unwrap(), vec!["en-us"]);
     }
 
     #[test]
@@ -2363,5 +2508,18 @@ mod tests {
         let (data, mime) = result.unwrap();
         assert_eq!(data.len(), 5785);
         assert_eq!(mime, "image/jpeg");
+    }
+
+    #[test]
+    fn test_epub_2() {
+        let epub_file = Path::new("./test_case/epub-2.epub");
+        let doc = EpubDoc::new(epub_file);
+        assert!(doc.is_ok());
+
+        let doc = doc.unwrap();
+
+        let titles = doc.get_title();
+        assert!(titles.is_ok());
+        assert_eq!(titles.unwrap(), vec!["Minimal EPUB 2.0"]);
     }
 }

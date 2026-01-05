@@ -402,7 +402,6 @@ pub struct ManifestItem {
     pub fallback: Option<String>,
 }
 
-// TODO: 需要增加一个函数，用于处理绝对路径‘/’和相对opf路径，将相对路径转为绝对路径
 #[cfg(feature = "builder")]
 impl ManifestItem {
     /// Creates a new manifest item

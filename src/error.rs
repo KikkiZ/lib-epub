@@ -142,6 +142,13 @@ pub enum EpubError {
     #[error("Decode error: {source}")]
     Utf16DecodeError { source: std::string::FromUtf16Error },
 
+    /// WalkDir error
+    /// 
+    /// This error occurs when using the WalkDir library to traverse the directory.
+    #[cfg(feature = "builder")]
+    #[error("WalkDir error: {source}")]
+    WalkDirError { source: walkdir::Error },
+
     /// QuickXml error
     ///
     /// This error occurs when parsing XML data using the QuickXml library.
@@ -183,6 +190,13 @@ impl From<std::string::FromUtf16Error> for EpubError {
 impl From<EpubBuilderError> for EpubError {
     fn from(value: EpubBuilderError) -> Self {
         EpubError::EpubBuilderError { source: value }
+    }
+}
+
+#[cfg(feature = "builder")]
+impl From<walkdir::Error> for EpubError {
+    fn from(value: walkdir::Error) -> Self {
+        EpubError::WalkDirError { source: value }
     }
 }
 
@@ -245,6 +259,11 @@ impl PartialEq for EpubError {
                 Self::Utf8DecodeError { source: r_source },
             ) => l_source == r_source,
 
+            (
+                Self::EpubBuilderError { source: l_source },
+                Self::EpubBuilderError { source: r_source },
+            ) => l_source == r_source,
+
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
@@ -258,6 +277,7 @@ impl PartialEq for EpubError {
 /// rules during the build process.
 #[cfg(feature = "builder")]
 #[derive(Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum EpubBuilderError {
     /// Illegal manifest path error
     ///
@@ -327,5 +347,5 @@ pub enum EpubBuilderError {
     ///
     /// This error is triggered when the format type of the specified file cannot be analyzed.
     #[error("Unable to analyze the file '{file_path}' type.")]
-    UnknowFileFormat { file_path: String },
+    UnknownFileFormat { file_path: String },
 }

@@ -65,6 +65,7 @@ use crate::{
 type XmlWriter = Writer<Cursor<Vec<u8>>>;
 
 // struct EpubVersion2;
+#[cfg_attr(test, derive(Debug))]
 pub struct EpubVersion3;
 
 /// EPUB Builder
@@ -107,10 +108,11 @@ pub struct EpubVersion3;
 /// ```
 ///
 /// ## Notes
-/// 
+///
 /// - All resource files **must** exist on the local file system.
 /// - **At least one rootfile** must be added before adding manifest items.
 /// - Requires at least one `title`, `language`, and `identifier` with id `pub-id`.
+#[cfg_attr(test, derive(Debug))]
 pub struct EpubBuilder<Version> {
     /// EPUB version placeholder
     epub_version: PhantomData<Version>,
@@ -247,14 +249,14 @@ impl EpubBuilder<EpubVersion3> {
         let real_mime = match Infer::new().get(&buf) {
             Some(infer_mime) => refine_mime_type(infer_mime.mime_type(), &extension),
             None => {
-                return Err(EpubBuilderError::UnknowFileFormat {
+                return Err(EpubBuilderError::UnknownFileFormat {
                     file_path: manifest_source.to_string(),
                 }
                 .into());
             }
         };
 
-        let target_path = self.normalize_manifest_path(&manifest_item.path)?;
+        let target_path = self.normalize_manifest_path(&manifest_item.path, &manifest_item.id)?;
         if let Some(parent_dir) = target_path.parent() {
             if !parent_dir.exists() {
                 fs::create_dir_all(parent_dir)?
@@ -341,12 +343,12 @@ impl EpubBuilder<EpubVersion3> {
         let options = FileOptions::<()>::default().compression_method(CompressionMethod::Stored);
 
         for entry in WalkDir::new(&self.temp_dir) {
-            let entry = entry.map_err(|_e| EpubError::FailedParsingXml)?;
+            let entry = entry?;
             let path = entry.path();
 
-            let relative_path = path
-                .strip_prefix(&self.temp_dir)
-                .map_err(|_e| EpubError::FailedParsingXml)?;
+            // It can be asserted that the path is prefixed with temp_dir,
+            // and there will be no boundary cases of symbolic links and hard links, etc.
+            let relative_path = path.strip_prefix(&self.temp_dir).unwrap();
             let target_path = relative_path.to_string_lossy().replace("\\", "/");
 
             if path.is_file() {
@@ -431,7 +433,7 @@ impl EpubBuilder<EpubVersion3> {
             manifest.path = PathBuf::from("/").join(manifest.path);
 
             let (buf, _) = doc.get_manifest_item(&manifest.id)?; // read raw file
-            let target_path = builder.normalize_manifest_path(&manifest.path)?;
+            let target_path = builder.normalize_manifest_path(&manifest.path, &manifest.id)?;
             if let Some(parent_dir) = target_path.parent() {
                 if !parent_dir.exists() {
                     fs::create_dir_all(parent_dir)?
@@ -777,13 +779,18 @@ impl EpubBuilder<EpubVersion3> {
     /// ## Parameters
     /// - `path`: The input path that may be relative or absolute. Can be any type that
     ///   implements `AsRef<Path>`, such as `&str`, `String`, `Path`, `PathBuf`, etc.
+    /// - `id`: The id of the manifest item
     ///
     /// ## Return
     /// - `Ok(PathBuf)`: The normalized absolute path within the EPUB container,
     ///   and the absolute path is not starting with "/"
     /// - `Err(EpubError)`: Error if path traversal is detected outside the EPUB container,
     ///   or failed to locate the absolute path.
-    fn normalize_manifest_path<P: AsRef<Path>>(&self, path: P) -> Result<PathBuf, EpubError> {
+    fn normalize_manifest_path<P: AsRef<Path>>(
+        &self,
+        path: P,
+        id: &str,
+    ) -> Result<PathBuf, EpubError> {
         let opf_path = PathBuf::from(&self.rootfiles[0]);
         let basic_path = remove_leading_slash(opf_path.parent().unwrap());
 
@@ -803,7 +810,7 @@ impl EpubBuilder<EpubVersion3> {
         } else if path.as_ref().starts_with("./") {
             // can not anlyze where the 'current' directory is
             Err(EpubBuilderError::IllegalManifestPath {
-                manifest_id: path.as_ref().to_string_lossy().to_string(),
+                manifest_id: id.to_string(),
             })?
         } else {
             self.temp_dir.join(basic_path).join(path)
@@ -861,97 +868,10 @@ mod tests {
     use crate::{
         builder::{EpubBuilder, EpubVersion3, refine_mime_type},
         epub::EpubDoc,
+        error::{EpubBuilderError, EpubError},
         types::{ManifestItem, MetadataItem, NavPoint, SpineItem},
         utils::local_time,
     };
-
-    #[test]
-    fn test_from() {
-        let builder = EpubBuilder::<EpubVersion3>::new();
-        assert!(builder.is_ok());
-
-        let metadata = vec![
-            MetadataItem {
-                id: None,
-                property: "title".to_string(),
-                value: "Test Book".to_string(),
-                lang: None,
-                refined: vec![],
-            },
-            MetadataItem {
-                id: None,
-                property: "language".to_string(),
-                value: "en".to_string(),
-                lang: None,
-                refined: vec![],
-            },
-            MetadataItem {
-                id: Some("pub-id".to_string()),
-                property: "identifier".to_string(),
-                value: "test-book".to_string(),
-                lang: None,
-                refined: vec![],
-            },
-        ];
-        let spine = vec![SpineItem {
-            id: None,
-            idref: "main".to_string(),
-            linear: true,
-            properties: None,
-        }];
-        let catalog = vec![
-            NavPoint {
-                label: "Nav".to_string(),
-                content: None,
-                children: vec![],
-                play_order: None,
-            },
-            NavPoint {
-                label: "Overview".to_string(),
-                content: None,
-                children: vec![],
-                play_order: None,
-            },
-        ];
-
-        let mut builder = builder.unwrap();
-        assert!(builder.add_rootfile("content.opf").is_ok());
-        builder.metadata = metadata.clone();
-        builder.spine = spine.clone();
-        builder.catalog = catalog.clone();
-        builder.set_catalog_title("catalog title");
-        let result = builder.add_manifest(
-            "./test_case/Overview.xhtml",
-            ManifestItem {
-                id: "main".to_string(),
-                path: PathBuf::from("Overview.xhtml"),
-                mime: String::new(),
-                properties: None,
-                fallback: None,
-            },
-        );
-        assert!(result.is_ok());
-
-        let epub_file = env::temp_dir().join(format!("{}.epub", local_time()));
-        let result = builder.make(&epub_file);
-        assert!(result.is_ok());
-
-        let doc = EpubDoc::new(&epub_file);
-        assert!(doc.is_ok());
-
-        let mut doc = doc.unwrap();
-        let builder = EpubBuilder::from(&mut doc);
-        assert!(builder.is_ok());
-        let builder = builder.unwrap();
-
-        assert_eq!(builder.metadata.len(), metadata.len() + 1);
-        assert_eq!(builder.manifest.len(), 1); // skip nav file
-        assert_eq!(builder.spine.len(), spine.len());
-        assert_eq!(builder.catalog, catalog);
-        assert_eq!(builder.catalog_title, "catalog title");
-
-        fs::remove_file(epub_file).unwrap();
-    }
 
     #[test]
     fn test_epub_builder_new() {
@@ -976,9 +896,28 @@ mod tests {
         assert_eq!(builder.rootfiles.len(), 1);
         assert_eq!(builder.rootfiles[0], "content.opf");
 
-        assert!(builder.add_rootfile("another.opf").is_ok());
+        assert!(builder.add_rootfile("./another.opf").is_ok());
         assert_eq!(builder.rootfiles.len(), 2);
         assert_eq!(builder.rootfiles, vec!["content.opf", "another.opf"]);
+    }
+
+    #[test]
+    fn test_add_rootfile_fail() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        let result = builder.add_rootfile("/rootfile.opf");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::IllegalRootfilePath.into()
+        );
+
+        let result = builder.add_rootfile("../rootfile.opf");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::IllegalRootfilePath.into()
+        );
     }
 
     #[test]
@@ -1004,7 +943,7 @@ mod tests {
         let test_file = temp_dir.join("test.xhtml");
         fs::write(&test_file, "<html><body>Hello World</body></html>").unwrap();
 
-        let manifest_item = ManifestItem::new("test", "test.xhtml").unwrap();
+        let manifest_item = ManifestItem::new("test", "/epub/test.xhtml").unwrap();
         let result = builder.add_manifest(test_file.to_str().unwrap(), manifest_item);
 
         assert!(result.is_ok());
@@ -1012,6 +951,32 @@ mod tests {
         assert!(builder.manifest.contains_key("test"));
 
         fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_add_manifest_no_rootfile() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        let manifest_item = ManifestItem {
+            id: "main".to_string(),
+            path: PathBuf::from("/Overview.xhtml"),
+            mime: String::new(),
+            properties: None,
+            fallback: None,
+        };
+
+        let result = builder.add_manifest("./test_case/Overview.xhtml", manifest_item.clone());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::MissingRootfile.into()
+        );
+
+        let result = builder.add_rootfile("package.opf");
+        assert!(result.is_ok());
+
+        let result = builder.add_manifest("./test_case/Overview.xhtml", manifest_item);
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -1023,12 +988,40 @@ mod tests {
         let result = builder.add_manifest("nonexistent.xhtml", manifest_item);
 
         assert!(result.is_err());
-        if let Err(err) = result {
-            assert_eq!(
-                err.to_string(),
-                "Epub builder error: Expect a file, but 'nonexistent.xhtml' is not a file."
-            );
-        }
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::TargetIsNotFile {
+                target_path: "nonexistent.xhtml".to_string()
+            }
+            .into()
+        );
+    }
+
+    #[test]
+    fn test_add_manifest_unknow_file_format() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+        let result = builder.add_rootfile("package.opf");
+        assert!(result.is_ok());
+
+        let result = builder.add_manifest(
+            "./test_case/unknown_file_format.xhtml",
+            ManifestItem {
+                id: "file".to_string(),
+                path: PathBuf::from("unknown_file_format.xhtml"),
+                mime: String::new(),
+                properties: None,
+                fallback: None,
+            },
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::UnknownFileFormat {
+                file_path: "./test_case/unknown_file_format.xhtml".to_string(),
+            }
+            .into()
+        )
     }
 
     #[test]
@@ -1073,6 +1066,37 @@ mod tests {
         assert_eq!(builder.catalog.len(), 2);
         assert_eq!(builder.catalog[0].label, "Chapter 1");
         assert_eq!(builder.catalog[1].label, "Chapter 2");
+    }
+
+    #[test]
+    fn test_make_container_file() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        let result = builder.make_container_xml();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::MissingRootfile.into()
+        );
+
+        assert!(builder.add_rootfile("content.opf").is_ok());
+        let result = builder.make_container_xml();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_make_navigation_document() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        let result = builder.make_navigation_document();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::NavigationInfoUninitalized.into()
+        );
+
+        builder.set_catalog(vec![NavPoint::new("test")]);
+        assert!(builder.make_navigation_document().is_ok());
     }
 
     #[test]
@@ -1261,14 +1285,210 @@ mod tests {
     }
 
     #[test]
+    fn test_make() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        assert!(builder.add_rootfile("content.opf").is_ok());
+        builder.add_metadata(MetadataItem::new("title", "Test Book"));
+        builder.add_metadata(MetadataItem::new("language", "en"));
+        builder.add_metadata(
+            MetadataItem::new("identifier", "test_identifier")
+                .with_id("pub-id")
+                .build(),
+        );
+
+        assert!(
+            builder
+                .add_manifest(
+                    "./test_case/Overview.xhtml",
+                    ManifestItem {
+                        id: "test".to_string(),
+                        path: PathBuf::from("test.xhtml"),
+                        mime: String::new(),
+                        properties: None,
+                        fallback: None,
+                    },
+                )
+                .is_ok()
+        );
+
+        builder.add_catalog_item(NavPoint::new("Chapter"));
+        builder.add_spine(SpineItem::new("test"));
+
+        let file = env::temp_dir()
+            .join("temp_dir")
+            .join(format!("{}.epub", local_time()));
+        assert!(builder.make(&file).is_ok());
+        assert!(EpubDoc::new(&file).is_ok());
+    }
+
+    #[test]
+    fn test_build() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        assert!(builder.add_rootfile("content.opf").is_ok());
+        builder.add_metadata(MetadataItem::new("title", "Test Book"));
+        builder.add_metadata(MetadataItem::new("language", "en"));
+        builder.add_metadata(
+            MetadataItem::new("identifier", "test_identifier")
+                .with_id("pub-id")
+                .build(),
+        );
+
+        assert!(
+            builder
+                .add_manifest(
+                    "./test_case/Overview.xhtml",
+                    ManifestItem {
+                        id: "test".to_string(),
+                        path: PathBuf::from("test.xhtml"),
+                        mime: String::new(),
+                        properties: None,
+                        fallback: None,
+                    },
+                )
+                .is_ok()
+        );
+
+        builder.add_catalog_item(NavPoint::new("Chapter"));
+        builder.add_spine(SpineItem::new("test"));
+
+        let file = env::temp_dir().join(format!("{}.epub", local_time()));
+        assert!(builder.build(&file).is_ok());
+    }
+
+    #[test]
+    fn test_from() {
+        let builder = EpubBuilder::<EpubVersion3>::new();
+        assert!(builder.is_ok());
+
+        let metadata = vec![
+            MetadataItem {
+                id: None,
+                property: "title".to_string(),
+                value: "Test Book".to_string(),
+                lang: None,
+                refined: vec![],
+            },
+            MetadataItem {
+                id: None,
+                property: "language".to_string(),
+                value: "en".to_string(),
+                lang: None,
+                refined: vec![],
+            },
+            MetadataItem {
+                id: Some("pub-id".to_string()),
+                property: "identifier".to_string(),
+                value: "test-book".to_string(),
+                lang: None,
+                refined: vec![],
+            },
+        ];
+        let spine = vec![SpineItem {
+            id: None,
+            idref: "main".to_string(),
+            linear: true,
+            properties: None,
+        }];
+        let catalog = vec![
+            NavPoint {
+                label: "Nav".to_string(),
+                content: None,
+                children: vec![],
+                play_order: None,
+            },
+            NavPoint {
+                label: "Overview".to_string(),
+                content: None,
+                children: vec![],
+                play_order: None,
+            },
+        ];
+
+        let mut builder = builder.unwrap();
+        assert!(builder.add_rootfile("content.opf").is_ok());
+        builder.metadata = metadata.clone();
+        builder.spine = spine.clone();
+        builder.catalog = catalog.clone();
+        builder.set_catalog_title("catalog title");
+        let result = builder.add_manifest(
+            "./test_case/Overview.xhtml",
+            ManifestItem {
+                id: "main".to_string(),
+                path: PathBuf::from("Overview.xhtml"),
+                mime: String::new(),
+                properties: None,
+                fallback: None,
+            },
+        );
+        assert!(result.is_ok());
+
+        let epub_file = env::temp_dir().join(format!("{}.epub", local_time()));
+        let result = builder.make(&epub_file);
+        assert!(result.is_ok());
+
+        let doc = EpubDoc::new(&epub_file);
+        assert!(doc.is_ok());
+
+        let mut doc = doc.unwrap();
+        let builder = EpubBuilder::from(&mut doc);
+        assert!(builder.is_ok());
+        let builder = builder.unwrap();
+
+        assert_eq!(builder.metadata.len(), metadata.len() + 1);
+        assert_eq!(builder.manifest.len(), 1); // skip nav file
+        assert_eq!(builder.spine.len(), spine.len());
+        assert_eq!(builder.catalog, catalog);
+        assert_eq!(builder.catalog_title, "catalog title");
+
+        fs::remove_file(epub_file).unwrap();
+    }
+
+    #[test]
+    fn test_normalize_manifest_path() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        assert!(builder.add_rootfile("content.opf").is_ok());
+
+        let result = builder.normalize_manifest_path("../../test.xhtml", "id");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubError::RealtiveLinkLeakage {
+                path: "../../test.xhtml".to_string()
+            }
+        );
+
+        let result = builder.normalize_manifest_path("/test.xhtml", "id");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), builder.temp_dir.join("test.xhtml"));
+
+        let result = builder.normalize_manifest_path("./test.xhtml", "manifest_id");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            EpubBuilderError::IllegalManifestPath {
+                manifest_id: "manifest_id".to_string()
+            }
+            .into(),
+        );
+    }
+
+    #[test]
     fn test_refine_mime_type() {
         assert_eq!(
             refine_mime_type("text/xml", "xhtml"),
             "application/xhtml+xml"
         );
+        assert_eq!(refine_mime_type("text/xml", "xht"), "application/xhtml+xml");
         assert_eq!(
             refine_mime_type("application/xml", "opf"),
             "application/oebps-package+xml"
+        );
+        assert_eq!(
+            refine_mime_type("text/xml", "ncx"),
+            "application/x-dtbncx+xml"
         );
         assert_eq!(refine_mime_type("text/plain", "css"), "text/css");
         assert_eq!(refine_mime_type("text/plain", "unknown"), "text/plain");
