@@ -57,6 +57,13 @@ pub enum EpubError {
     )]
     MissingRequiredAttribute { tag: String, attribute: String },
 
+    /// Mutex error
+    ///
+    /// This error occurs when a mutex is poisoned, which means
+    /// that a thread has panicked while holding a lock on the mutex.
+    #[error("Mutex error: Mutex was poisoned.")]
+    MutexError,
+
     /// Non-canonical EPUB structure error
     ///
     /// This error occurs when an EPUB file lacks some files or directory
@@ -143,7 +150,7 @@ pub enum EpubError {
     Utf16DecodeError { source: std::string::FromUtf16Error },
 
     /// WalkDir error
-    /// 
+    ///
     /// This error occurs when using the WalkDir library to traverse the directory.
     #[cfg(feature = "builder")]
     #[error("WalkDir error: {source}")]
@@ -183,6 +190,12 @@ impl From<std::string::FromUtf8Error> for EpubError {
 impl From<std::string::FromUtf16Error> for EpubError {
     fn from(value: std::string::FromUtf16Error) -> Self {
         EpubError::Utf16DecodeError { source: value }
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for EpubError {
+    fn from(_value: std::sync::PoisonError<T>) -> Self {
+        EpubError::MutexError
     }
 }
 

@@ -1,14 +1,14 @@
 [package]
 name = "lib-epub"
 authors = ["KikkiZ <zhangyozh@foxmail.com>"]
-description = "A Rust library for reading and manipulating EPUB eBook files."
+description = "A Rust library for reading and manipulating EPUB files."
 documentation = "https://docs.rs/lib-epub"
 exclude = ["/test_case"]
 keywords = ["epub", "ebook", "library"]
 license = "MIT"
 repository = "https://github.com/KikkiZ/lib-epub.git"
 
-version = "0.0.6"
+version = "0.0.7"
 edition = "2024"
 rust-version = "1.85"
 
@@ -21,7 +21,7 @@ sha1 = "0.10.6"
 sha2 = "0.10.9"
 thiserror = "2.0.17"
 walkdir = { version = "2.5.0", optional = true }
-zip = { version = "5.1.1", default-features = false, features = ["deflate"] }
+zip = { version = "7.0.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 flate2 = "1.1.5"

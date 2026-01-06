@@ -18,8 +18,6 @@
 //!   especially for large publications.
 //!
 //! ## Future Work
-//! - Adds support for asynchronous I/O, improving the user experience in asynchronous
-//!   environments. Considering adding support for multi-threaded access.
 //! - Supports more EPUB specification features, such as media overlay and scripts.
 
 use std::{
@@ -27,6 +25,10 @@ use std::{
     fs::{File, canonicalize},
     io::{BufReader, Read, Seek},
     path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use log::warn;
@@ -65,9 +67,14 @@ use crate::{
 /// let doc = EpubDoc::new("./test_case/epub-33.epub");
 /// assert!(doc.is_ok());
 /// ```
+///
+/// ## Notes
+/// - The `EpubDoc` structure is thread-safe **if and only if** the structure is immutable. 
+/// - The fact that `EpubDoc` is mutable has no practical meaning; modifications 
+///   to the structure data are not stored in the epub file.
 pub struct EpubDoc<R: Read + Seek> {
     /// The structure of the epub file that actually holds it
-    pub(crate) archive: ZipArchive<R>,
+    pub(crate) archive: Arc<Mutex<ZipArchive<R>>>,
 
     /// The path to the target epub file
     pub(crate) epub_path: PathBuf,
@@ -114,7 +121,10 @@ pub struct EpubDoc<R: Read + Seek> {
     pub catalog_title: String,
 
     /// The index of the current reading spine
-    pub current_spine_index: usize,
+    current_spine_index: AtomicUsize,
+
+    /// Whether the epub file contains encryption information
+    has_encryption: bool,
 }
 
 impl<R: Read + Seek> EpubDoc<R> {
@@ -162,13 +172,14 @@ impl<R: Read + Seek> EpubDoc<R> {
         let opf_file =
             get_file_in_zip_archive(&mut archive, package_path.to_str().unwrap())?.decode()?;
         let package = XmlReader::parse(&opf_file)?;
-        // let document = kiss_xml::parse_str(opf_file).unwrap();
 
-        // let package = document.root_element();
         let version = Self::determine_epub_version(&package)?;
+        let has_encryption = archive
+            .by_path(Path::new("META-INF/encryption.xml"))
+            .is_ok();
 
         let mut doc = Self {
-            archive,
+            archive: Arc::new(Mutex::new(archive)),
             epub_path,
             package_path,
             base_path,
@@ -181,7 +192,8 @@ impl<R: Read + Seek> EpubDoc<R> {
             encryption: None,
             catalog: vec![],
             catalog_title: String::new(),
-            current_spine_index: 0,
+            current_spine_index: AtomicUsize::new(0),
+            has_encryption,
         };
 
         let metadata_element = package.find_elements_by_name("metadata").next().unwrap();
@@ -402,8 +414,9 @@ impl<R: Read + Seek> EpubDoc<R> {
             return Ok(());
         }
 
+        let mut archive = self.archive.lock()?;
         let encryption_file =
-            get_file_in_zip_archive(&mut self.archive, "META-INF/encryption.xml")?.decode()?;
+            get_file_in_zip_archive(&mut archive, "META-INF/encryption.xml")?.decode()?;
 
         let root = XmlReader::parse(&encryption_file)?;
 
@@ -460,13 +473,12 @@ impl<R: Read + Seek> EpubDoc<R> {
     fn parse_catalog(&mut self) -> Result<(), EpubError> {
         const HEAD_TAGS: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
 
+        let mut archive = self.archive.lock()?;
         match self.version {
             EpubVersion::Version2_0 => {
-                let opf_file = get_file_in_zip_archive(
-                    &mut self.archive,
-                    self.package_path.to_str().unwrap(),
-                )?
-                .decode()?;
+                let opf_file =
+                    get_file_in_zip_archive(&mut archive, self.package_path.to_str().unwrap())?
+                        .decode()?;
                 let opf_element = XmlReader::parse(&opf_file)?;
 
                 let toc_id = opf_element
@@ -489,7 +501,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                     .to_str()
                     .unwrap();
 
-                let ncx_file = get_file_in_zip_archive(&mut self.archive, toc_path)?.decode()?;
+                let ncx_file = get_file_in_zip_archive(&mut archive, toc_path)?.decode()?;
                 let ncx = XmlReader::parse(&ncx_file)?;
 
                 match ncx.find_elements_by_name("docTitle").next() {
@@ -526,8 +538,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                     })?;
 
                 let nav_file =
-                    get_file_in_zip_archive(&mut self.archive, nav_path.to_str().unwrap())?
-                        .decode()?;
+                    get_file_in_zip_archive(&mut archive, nav_path.to_str().unwrap())?.decode()?;
 
                 let nav_element = XmlReader::parse(&nav_file)?;
                 let nav = nav_element
@@ -567,10 +578,8 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// ## Notes
     /// - This function only checks the existence of the encrypted file;
     ///   it does not verify the validity of the encrypted information.
-    pub fn has_encryption(&mut self) -> bool {
-        self.archive
-            .by_path(Path::new("META-INF/encryption.xml"))
-            .is_ok()
+    pub fn has_encryption(&self) -> bool {
+        self.has_encryption
     }
 
     /// Retrieves a list of metadata items
@@ -696,7 +705,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// ## Notes
     /// - This function will automatically decrypt the resource if it is encrypted.
     /// - For unsupported encryption methods, the corresponding error will be returned.
-    pub fn get_manifest_item(&mut self, id: &str) -> Result<(Vec<u8>, String), EpubError> {
+    pub fn get_manifest_item(&self, id: &str) -> Result<(Vec<u8>, String), EpubError> {
         let resource_item = self
             .manifest
             .get(id)
@@ -705,7 +714,8 @@ impl<R: Read + Seek> EpubDoc<R> {
 
         let path = resource_item.path.to_str().unwrap();
 
-        let mut data = match self.archive.by_name(path) {
+        let mut archive = self.archive.lock()?;
+        let mut data = match archive.by_name(path) {
             Ok(mut file) => {
                 let mut entry = Vec::<u8>::new();
                 file.read_to_end(&mut entry)?;
@@ -743,10 +753,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - This function will automatically decrypt the resource if it is encrypted.
     /// - For unsupported encryption methods, the corresponding error will be returned.
     /// - Relative paths other than the root directory of the Epub container are not supported.
-    pub fn get_manifest_item_by_path(
-        &mut self,
-        path: &str,
-    ) -> Result<(Vec<u8>, String), EpubError> {
+    pub fn get_manifest_item_by_path(&self, path: &str) -> Result<(Vec<u8>, String), EpubError> {
         let id = self
             .manifest
             .iter()
@@ -775,7 +782,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     ///   the MIME type
     /// - `Err(EpubError)`: Errors that occurred during the retrieval process
     pub fn get_manifest_item_with_fallback(
-        &mut self,
+        &self,
         id: &str,
         supported_format: Vec<&str>,
     ) -> Result<(Vec<u8>, String), EpubError> {
@@ -836,7 +843,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     ///   even if multiple matches exist
     /// - The retrieved cover may not be an image resource; users need to pay attention
     ///   to the resource's MIME type.
-    pub fn get_cover(&mut self) -> Option<(Vec<u8>, String)> {
+    pub fn get_cover(&self) -> Option<(Vec<u8>, String)> {
         self.manifest
             .values()
             .filter_map(|manifest| {
@@ -881,7 +888,7 @@ impl<R: Read + Seek> EpubDoc<R> {
         }
 
         let manifest_id = self.spine[index].idref.clone();
-        self.current_spine_index = index;
+        self.current_spine_index.store(index, Ordering::SeqCst);
         self.get_manifest_item(&manifest_id).ok()
     }
 
@@ -896,16 +903,17 @@ impl<R: Read + Seek> EpubDoc<R> {
     ///   the MIME type
     /// - `None`: Already in the first chapter, the current chapter is not linear,
     ///   or data retrieval failed
-    pub fn spine_prev(&mut self) -> Option<(Vec<u8>, String)> {
-        if self.current_spine_index == 0 || !self.spine[self.current_spine_index].linear {
+    pub fn spine_prev(&self) -> Option<(Vec<u8>, String)> {
+        let current_index = self.current_spine_index.load(Ordering::SeqCst);
+        if current_index == 0 || !self.spine[current_index].linear {
             return None;
         }
 
-        let prev_index = (0..self.current_spine_index)
+        let prev_index = (0..current_index)
             .rev()
             .find(|&index| self.spine[index].linear)?;
 
-        self.current_spine_index = prev_index;
+        self.current_spine_index.store(prev_index, Ordering::SeqCst);
         let manifest_id = self.spine[prev_index].idref.clone();
         self.get_manifest_item(&manifest_id).ok()
     }
@@ -922,16 +930,15 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - `None`: Already in the last chapter, the current chapter is not linear,
     ///   or data retrieval failed
     pub fn spine_next(&mut self) -> Option<(Vec<u8>, String)> {
-        if self.current_spine_index >= self.spine.len() - 1
-            || !self.spine[self.current_spine_index].linear
-        {
+        let current_index = self.current_spine_index.load(Ordering::SeqCst);
+        if current_index >= self.spine.len() - 1 || !self.spine[current_index].linear {
             return None;
         }
 
-        let next_index = (self.current_spine_index + 1..self.spine.len())
-            .find(|&index| self.spine[index].linear)?;
+        let next_index =
+            (current_index + 1..self.spine.len()).find(|&index| self.spine[index].linear)?;
 
-        self.current_spine_index = next_index;
+        self.current_spine_index.store(next_index, Ordering::SeqCst);
         let manifest_id = self.spine[next_index].idref.clone();
         self.get_manifest_item(&manifest_id).ok()
     }
@@ -945,8 +952,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - `Some((Vec<u8>, String))`: Successfully retrieved current chapter content data and
     ///   the MIME type
     /// - `None`: Data retrieval failed
-    pub fn spine_current(&mut self) -> Option<(Vec<u8>, String)> {
-        let manifest_id = self.spine[self.current_spine_index].idref.clone();
+    pub fn spine_current(&self) -> Option<(Vec<u8>, String)> {
+        let manifest_id = self.spine[self.current_spine_index.load(Ordering::SeqCst)]
+            .idref
+            .clone();
         self.get_manifest_item(&manifest_id).ok()
     }
 
@@ -1014,7 +1023,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - All text content is normalized by whitespace
     #[inline]
     fn parse_dc_metadata(
-        &mut self,
+        &self,
         element: &XmlElement,
         metadata: &mut Vec<MetadataItem>,
         // refinements: &mut HashMap<String, Vec<MetadataRefinement>>,
@@ -1069,7 +1078,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - All parsing results are added directly to the incoming collection and no new collection is returned
     #[inline]
     fn parse_opf_metadata(
-        &mut self,
+        &self,
         element: &XmlElement,
         metadata: &mut Vec<MetadataItem>,
         metadata_link: &mut Vec<MetadataLinkItem>,
@@ -1084,7 +1093,7 @@ impl<R: Read + Seek> EpubDoc<R> {
 
     #[inline]
     fn parse_meta_element(
-        &mut self,
+        &self,
         element: &XmlElement,
         metadata: &mut Vec<MetadataItem>,
         refinements: &mut HashMap<String, Vec<MetadataRefinement>>,
@@ -1159,7 +1168,7 @@ impl<R: Read + Seek> EpubDoc<R> {
 
     #[inline]
     fn parse_link_element(
-        &mut self,
+        &self,
         element: &XmlElement,
         metadata_link: &mut Vec<MetadataLinkItem>,
     ) -> Result<(), EpubError> {
@@ -1462,7 +1471,7 @@ mod tests {
 
     /// Section 3.3 package documents
     mod package_documents_tests {
-        use std::path::Path;
+        use std::{path::Path, sync::atomic::Ordering};
 
         use crate::epub::{EpubDoc, EpubVersion};
 
@@ -1512,7 +1521,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             assert_eq!(doc.manifest.len(), 2);
             assert!(doc.get_manifest_item("nav").is_ok());
             assert!(doc.get_manifest_item("content_001").is_ok());
@@ -1686,7 +1695,9 @@ mod tests {
 
             loop {
                 if let Some(spine) = doc.spine_next() {
-                    let idref = doc.spine[doc.current_spine_index].idref.clone();
+                    let idref = doc.spine[doc.current_spine_index.load(Ordering::Relaxed)]
+                        .idref
+                        .clone();
                     let resource = doc.get_manifest_item(&idref);
                     assert!(resource.is_ok());
 
@@ -1697,7 +1708,7 @@ mod tests {
                 }
             }
 
-            assert_eq!(doc.current_spine_index, 3);
+            assert_eq!(doc.current_spine_index.load(Ordering::Relaxed), 3);
         }
 
         /// ID: pkg-spine-unknown
@@ -1813,7 +1824,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             assert!(
                 doc.get_manifest_item_by_path("EPUB/content_001.xhtml")
                     .is_ok()
@@ -1845,7 +1856,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             assert!(doc.get_manifest_item("content_001").is_ok());
             assert!(doc.get_manifest_item("bar").is_ok());
 
@@ -1866,7 +1877,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "image-tiff",
                 vec!["image/png", "application/xhtml+xml"],
@@ -1886,7 +1897,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "content_primary",
                 vec!["application/xhtml+xml", "application/json"],
@@ -1911,7 +1922,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "content_primary",
                 vec!["application/xhtml+xml", "application/xml"],
@@ -1936,7 +1947,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "content_primary",
                 vec!["application/xhtml+xml", "application/dtc+xml"],
@@ -2061,7 +2072,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             assert!(doc.get_manifest_item("nav").is_ok());
             assert!(doc.get_manifest_item("content_001").is_ok());
             assert!(doc.get_manifest_item("content_002").is_err());
@@ -2076,7 +2087,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             assert_eq!(doc.package_path, Path::new("foo/BAR/baz.opf"));
             assert_eq!(doc.base_path, Path::new("foo/BAR"));
             assert_eq!(
@@ -2122,7 +2133,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
             let unique_id = doc.unique_identifier.clone();
 
             let mut hasher = Sha1::new();
@@ -2141,6 +2152,8 @@ mod tests {
 
             let font_file = doc
                 .archive
+                .lock()
+                .unwrap()
                 .by_name(&data.data)
                 .unwrap()
                 .bytes()
@@ -2166,7 +2179,7 @@ mod tests {
             let doc = EpubDoc::new(epub_file);
             assert!(doc.is_ok());
 
-            let mut doc = doc.unwrap();
+            let doc = doc.unwrap();
 
             let wrong_unique_id = "wrong-publication-id";
             let mut hasher = Sha1::new();
@@ -2185,6 +2198,8 @@ mod tests {
 
             let font_file = doc
                 .archive
+                .lock()
+                .unwrap()
                 .by_name(&data.data)
                 .unwrap()
                 .bytes()
@@ -2360,7 +2375,7 @@ mod tests {
         let doc = EpubDoc::new(epub_file);
         assert!(doc.is_ok());
 
-        let mut doc = doc.unwrap();
+        let doc = doc.unwrap();
         assert!(doc.has_encryption());
     }
 
@@ -2471,7 +2486,7 @@ mod tests {
         let doc = EpubDoc::new(epub_file);
         assert!(doc.is_ok());
 
-        let mut doc = doc.unwrap();
+        let doc = doc.unwrap();
         assert!(doc.get_manifest_item("content_001").is_ok());
         assert!(doc.get_manifest_item("bar").is_ok());
 
@@ -2501,7 +2516,7 @@ mod tests {
         }
         assert!(doc.is_ok());
 
-        let mut doc = doc.unwrap();
+        let doc = doc.unwrap();
         let result = doc.get_cover();
         assert!(result.is_some());
 

@@ -2,12 +2,12 @@ use std::{
     cmp::min,
     collections::HashMap,
     io::{Read, Seek},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[cfg(feature = "builder")]
 use chrono::Local;
-use quick_xml::{NsReader, events::Event};
+use quick_xml::{events::Event, NsReader};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use zip::{CompressionMethod, ZipArchive};
@@ -171,7 +171,7 @@ pub fn check_realtive_link_leakage(
 ///
 /// This function removes the leading slash from a path if it exists.
 #[cfg(feature = "builder")]
-pub fn remove_leading_slash<P: AsRef<Path>>(path: P) -> PathBuf {
+pub fn remove_leading_slash<P: AsRef<std::path::Path>>(path: P) -> PathBuf {
     if let Ok(path) = path.as_ref().strip_prefix("/") {
         path.to_path_buf()
     } else {
