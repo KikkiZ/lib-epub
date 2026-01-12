@@ -69,8 +69,8 @@ use crate::{
 /// ```
 ///
 /// ## Notes
-/// - The `EpubDoc` structure is thread-safe **if and only if** the structure is immutable. 
-/// - The fact that `EpubDoc` is mutable has no practical meaning; modifications 
+/// - The `EpubDoc` structure is thread-safe **if and only if** the structure is immutable.
+/// - The fact that `EpubDoc` is mutable has no practical meaning; modifications
 ///   to the structure data are not stored in the epub file.
 pub struct EpubDoc<R: Read + Seek> {
     /// The structure of the epub file that actually holds it
@@ -217,9 +217,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                 .find(|item| item.property == "identifier")
         }
         .map(|item| item.value.clone())
-        .ok_or_else(|| EpubError::NonCanonicalFile {
-            tag: "dc:identifier".to_string(),
-        })?;
+        .ok_or_else(|| EpubError::NonCanonicalFile { tag: "dc:identifier".to_string() })?;
 
         Ok(doc)
     }
@@ -244,9 +242,7 @@ impl<R: Read + Seek> EpubDoc<R> {
         let rootfile = root
             .find_elements_by_name("rootfile")
             .next()
-            .ok_or_else(|| EpubError::NonCanonicalFile {
-                tag: "rootfile".to_string(),
-            })?;
+            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "rootfile".to_string() })?;
 
         let attr =
             rootfile
@@ -388,12 +384,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                 .unwrap_or(true);
             let properties = element.get_attr("properties");
 
-            spine.push(SpineItem {
-                idref,
-                id,
-                linear,
-                properties,
-            });
+            spine.push(SpineItem { idref, id, linear, properties });
         }
 
         self.spine = spine;
@@ -484,9 +475,7 @@ impl<R: Read + Seek> EpubDoc<R> {
                 let toc_id = opf_element
                     .find_children_by_name("spine")
                     .next()
-                    .ok_or_else(|| EpubError::NonCanonicalFile {
-                        tag: "spine".to_string(),
-                    })?
+                    .ok_or_else(|| EpubError::NonCanonicalFile { tag: "spine".to_string() })?
                     .get_attr("toc")
                     .ok_or_else(|| EpubError::MissingRequiredAttribute {
                         tag: "spine".to_string(),
@@ -511,11 +500,10 @@ impl<R: Read + Seek> EpubDoc<R> {
                     ),
                 };
 
-                let nav_map = ncx.find_elements_by_name("navMap").next().ok_or_else(|| {
-                    EpubError::NonCanonicalFile {
-                        tag: "navMap".to_string(),
-                    }
-                })?;
+                let nav_map = ncx
+                    .find_elements_by_name("navMap")
+                    .next()
+                    .ok_or_else(|| EpubError::NonCanonicalFile { tag: "navMap".to_string() })?;
 
                 self.catalog = self.parse_nav_points(nav_map)?;
 
@@ -544,15 +532,12 @@ impl<R: Read + Seek> EpubDoc<R> {
                 let nav = nav_element
                     .find_elements_by_name("nav")
                     .find(|&element| element.get_attr("epub:type") == Some(String::from("toc")))
-                    .ok_or_else(|| EpubError::NonCanonicalFile {
-                        tag: "nav".to_string(),
-                    })?;
+                    .ok_or_else(|| EpubError::NonCanonicalFile { tag: "nav".to_string() })?;
                 let nav_title = nav.find_children_by_names(&HEAD_TAGS).next();
-                let nav_list = nav.find_children_by_name("ol").next().ok_or_else(|| {
-                    EpubError::NonCanonicalFile {
-                        tag: "ol".to_string(),
-                    }
-                })?;
+                let nav_list = nav
+                    .find_children_by_name("ol")
+                    .next()
+                    .ok_or_else(|| EpubError::NonCanonicalFile { tag: "ol".to_string() })?;
 
                 self.catalog = self.parse_catalog_list(nav_list)?;
                 if let Some(nav_title) = nav_title {
@@ -642,9 +627,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - The EPUB specification requires each publication to have at least one title.
     pub fn get_title(&self) -> Result<Vec<String>, EpubError> {
         self.get_metadata_value("title")
-            .ok_or_else(|| EpubError::NonCanonicalFile {
-                tag: "title".to_string(),
-            })
+            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "title".to_string() })
     }
 
     /// Retrieves the language used in the publication
@@ -662,9 +645,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - Language identifiers should conform to RFC 3066 or later standards.
     pub fn get_language(&self) -> Result<Vec<String>, EpubError> {
         self.get_metadata_value("language")
-            .ok_or_else(|| EpubError::NonCanonicalFile {
-                tag: "language".to_string(),
-            })
+            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "language".to_string() })
     }
 
     /// Retrieves the identifier of a publication
@@ -684,9 +665,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     ///   This means that `unique-identifier` is not exactly equal to `<dc:identifier>`.
     pub fn get_identifier(&self) -> Result<Vec<String>, EpubError> {
         self.get_metadata_value("identifier")
-            .ok_or_else(|| EpubError::NonCanonicalFile {
-                tag: "identifier".to_string(),
-            })
+            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "identifier".to_string() })
     }
 
     /// Retrieve resource data by resource ID
@@ -722,9 +701,9 @@ impl<R: Read + Seek> EpubDoc<R> {
 
                 Ok(entry)
             }
-            Err(ZipError::FileNotFound) => Err(EpubError::ResourceNotFound {
-                resource: path.to_string(),
-            }),
+            Err(ZipError::FileNotFound) => {
+                Err(EpubError::ResourceNotFound { resource: path.to_string() })
+            }
             Err(err) => Err(EpubError::from(err)),
         }?;
 
@@ -759,9 +738,7 @@ impl<R: Read + Seek> EpubDoc<R> {
             .iter()
             .find(|(_, item)| item.path.to_str().unwrap() == path)
             .map(|(id, _)| id.to_string())
-            .ok_or_else(|| EpubError::ResourceNotFound {
-                resource: path.to_string(),
-            })?;
+            .ok_or_else(|| EpubError::ResourceNotFound { resource: path.to_string() })?;
 
         self.get_manifest_item(&id)
     }
@@ -981,9 +958,7 @@ impl<R: Read + Seek> EpubDoc<R> {
         let spine_element = opf_element
             .find_elements_by_name("spine")
             .next()
-            .ok_or_else(|| EpubError::NonCanonicalFile {
-                tag: "spine".to_string(),
-            })?;
+            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "spine".to_string() })?;
 
         // Look for EPUB 2.x specific features
         if spine_element.get_attr("toc").is_some() {
@@ -993,9 +968,7 @@ impl<R: Read + Seek> EpubDoc<R> {
         let manifest_element = opf_element
             .find_elements_by_name("manifest")
             .next()
-            .ok_or_else(|| EpubError::NonCanonicalFile {
-                tag: "manifest".to_string(),
-            })?;
+            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "manifest".to_string() })?;
 
         // Look for EPUB 3.x specific features
         manifest_element
@@ -1055,13 +1028,7 @@ impl<R: Read + Seek> EpubDoc<R> {
             EpubVersion::Version3_0 => vec![],
         };
 
-        metadata.push(MetadataItem {
-            id,
-            property,
-            value,
-            lang,
-            refined,
-        });
+        metadata.push(MetadataItem { id, property, value, lang, refined });
 
         Ok(())
     }
@@ -1100,12 +1067,9 @@ impl<R: Read + Seek> EpubDoc<R> {
     ) -> Result<(), EpubError> {
         match self.version {
             EpubVersion::Version2_0 => {
-                let property =
-                    element
-                        .get_attr("name")
-                        .ok_or_else(|| EpubError::NonCanonicalFile {
-                            tag: element.tag_name(),
-                        })?;
+                let property = element
+                    .get_attr("name")
+                    .ok_or_else(|| EpubError::NonCanonicalFile { tag: element.tag_name() })?;
                 let value = element
                     .get_attr("content")
                     .ok_or_else(|| EpubError::MissingRequiredAttribute {
@@ -1225,12 +1189,7 @@ impl<R: Read + Seek> EpubDoc<R> {
 
             let children = self.parse_nav_points(nav_point)?;
 
-            nav_points.push(NavPoint {
-                label,
-                content,
-                play_order,
-                children,
-            });
+            nav_points.push(NavPoint { label, content, play_order, children });
         }
 
         nav_points.sort();
@@ -1246,17 +1205,13 @@ impl<R: Read + Seek> EpubDoc<R> {
         let mut catalog = Vec::new();
         for item in element.children() {
             if item.tag_name() != "li" {
-                return Err(EpubError::NonCanonicalFile {
-                    tag: "li".to_string(),
-                });
+                return Err(EpubError::NonCanonicalFile { tag: "li".to_string() });
             }
 
             let title_element = item
                 .find_children_by_names(&["span", "a"])
                 .next()
-                .ok_or_else(|| EpubError::NonCanonicalFile {
-                    tag: "span/a".to_string(),
-                })?;
+                .ok_or_else(|| EpubError::NonCanonicalFile { tag: "span/a".to_string() })?;
             let content_href = title_element.get_attr("href").map(PathBuf::from);
             let sub_list = if let Some(list) = item.find_children_by_name("ol").next() {
                 self.parse_catalog_list(list)?
@@ -1299,9 +1254,7 @@ impl<R: Read + Seek> EpubDoc<R> {
 
             check_realtive_link_leakage(self.epub_path.clone(), current_dir, path)
                 .map(PathBuf::from)
-                .ok_or_else(|| EpubError::RealtiveLinkLeakage {
-                    path: path.to_string(),
-                })?
+                .ok_or_else(|| EpubError::RealtiveLinkLeakage { path: path.to_string() })?
         } else if let Some(path) = path.strip_prefix("/") {
             PathBuf::from(path.to_string())
         } else {
@@ -1432,9 +1385,7 @@ impl<R: Read + Seek> EpubDoc<R> {
             "http://ns.adobe.com/pdf/enc#RC" => {
                 Ok(adobe_font_dencryption(data, &self.unique_identifier))
             }
-            _ => Err(EpubError::UnsupportedEncryptedMethod {
-                method: method.to_string(),
-            }),
+            _ => Err(EpubError::UnsupportedEncryptedMethod { method: method.to_string() }),
         }
     }
 }
@@ -2249,9 +2200,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            EpubError::NonCanonicalFile {
-                tag: "rootfile".to_string()
-            }
+            EpubError::NonCanonicalFile { tag: "rootfile".to_string() }
         );
 
         let container = r#"

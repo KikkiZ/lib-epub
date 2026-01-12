@@ -218,55 +218,43 @@ impl PartialEq for EpubError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (
-                Self::MissingRequiredAttribute {
-                    tag: l_tag,
-                    attribute: l_attribute,
-                },
-                Self::MissingRequiredAttribute {
-                    tag: r_tag,
-                    attribute: r_attribute,
-                },
+                Self::MissingRequiredAttribute { tag: l_tag, attribute: l_attribute },
+                Self::MissingRequiredAttribute { tag: r_tag, attribute: r_attribute },
             ) => l_tag == r_tag && l_attribute == r_attribute,
+
             (
-                Self::NonCanonicalEpub {
-                    expected_file: l_expected_file,
-                },
-                Self::NonCanonicalEpub {
-                    expected_file: r_expected_file,
-                },
+                Self::NonCanonicalEpub { expected_file: l_expected_file },
+                Self::NonCanonicalEpub { expected_file: r_expected_file },
             ) => l_expected_file == r_expected_file,
+
             (Self::NonCanonicalFile { tag: l_tag }, Self::NonCanonicalFile { tag: r_tag }) => {
                 l_tag == r_tag
             }
+
             (
                 Self::RealtiveLinkLeakage { path: l_path },
                 Self::RealtiveLinkLeakage { path: r_path },
             ) => l_path == r_path,
+
             (Self::ResourceIdNotExist { id: l_id }, Self::ResourceIdNotExist { id: r_id }) => {
                 l_id == r_id
             }
+
             (
-                Self::ResourceNotFound {
-                    resource: l_resource,
-                },
-                Self::ResourceNotFound {
-                    resource: r_resource,
-                },
+                Self::ResourceNotFound { resource: l_resource },
+                Self::ResourceNotFound { resource: r_resource },
             ) => l_resource == r_resource,
+
             (
                 Self::UnsupportedEncryptedMethod { method: l_method },
                 Self::UnsupportedEncryptedMethod { method: r_method },
             ) => l_method == r_method,
+
             (
-                Self::UnusableCompressionMethod {
-                    file: l_file,
-                    method: l_method,
-                },
-                Self::UnusableCompressionMethod {
-                    file: r_file,
-                    method: r_method,
-                },
+                Self::UnusableCompressionMethod { file: l_file, method: l_method },
+                Self::UnusableCompressionMethod { file: r_file, method: r_method },
             ) => l_file == r_file && l_method == r_method,
+
             (
                 Self::Utf8DecodeError { source: l_source },
                 Self::Utf8DecodeError { source: r_source },

@@ -416,10 +416,9 @@ impl ManifestItem {
     /// Returns an error if the path starts with "../" which is not allowed.
     pub fn new(id: &str, path: &str) -> Result<Self, EpubError> {
         if path.starts_with("../") {
-            return Err(EpubBuilderError::IllegalManifestPath {
-                manifest_id: id.to_string(),
-            }
-            .into());
+            return Err(
+                EpubBuilderError::IllegalManifestPath { manifest_id: id.to_string() }.into(),
+            );
         }
 
         Ok(Self {

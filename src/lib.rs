@@ -1,5 +1,3 @@
-#![allow(clippy::collapsible_if)]
-
 //! Epub library
 //!
 //! A Rust library for reading and manipulating EPUB eBook files.

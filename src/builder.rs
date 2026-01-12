@@ -809,9 +809,7 @@ impl EpubBuilder<EpubVersion3> {
             self.temp_dir.join(path)
         } else if path.as_ref().starts_with("./") {
             // can not anlyze where the 'current' directory is
-            Err(EpubBuilderError::IllegalManifestPath {
-                manifest_id: id.to_string(),
-            })?
+            Err(EpubBuilderError::IllegalManifestPath { manifest_id: id.to_string() })?
         } else {
             self.temp_dir.join(basic_path).join(path)
         };
@@ -1455,9 +1453,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            EpubError::RealtiveLinkLeakage {
-                path: "../../test.xhtml".to_string()
-            }
+            EpubError::RealtiveLinkLeakage { path: "../../test.xhtml".to_string() }
         );
 
         let result = builder.normalize_manifest_path("/test.xhtml", "id");
@@ -1468,10 +1464,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            EpubBuilderError::IllegalManifestPath {
-                manifest_id: "manifest_id".to_string()
-            }
-            .into(),
+            EpubBuilderError::IllegalManifestPath { manifest_id: "manifest_id".to_string() }.into(),
         );
     }
 

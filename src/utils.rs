@@ -7,7 +7,7 @@ use std::{
 
 #[cfg(feature = "builder")]
 use chrono::Local;
-use quick_xml::{events::Event, NsReader};
+use quick_xml::{NsReader, events::Event};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use zip::{CompressionMethod, ZipArchive};
