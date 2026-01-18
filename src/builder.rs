@@ -35,6 +35,7 @@
 //! - Requires `builder` functionality to use this module.
 
 use std::{
+    cmp::Reverse,
     collections::HashMap,
     env,
     fs::{self, File},
@@ -191,6 +192,27 @@ impl EpubBuilder<EpubVersion3> {
         Ok(self)
     }
 
+    /// Remove the last added rootfile from the builder
+    pub fn remove_last_rootfile(&mut self) -> &mut Self {
+        self.rootfiles.pop();
+        self
+    }
+
+    /// Remove and return the last added rootfile
+    ///
+    /// ## Return
+    /// - `Some(String)`: The last added rootfile
+    /// - `None`: If no rootfile exists
+    pub fn take_last_rootfile(&mut self) -> Option<String> {
+        self.rootfiles.pop()
+    }
+
+    /// Clear all configured rootfile entries from the builder
+    pub fn clear_rootfiles(&mut self) -> &mut Self {
+        self.rootfiles.clear();
+        self
+    }
+
     /// Add metadata item
     ///
     /// Required metadata includes title, language, and an identifier with 'pub-id'.
@@ -200,6 +222,27 @@ impl EpubBuilder<EpubVersion3> {
     /// - `item`: Metadata items to add
     pub fn add_metadata(&mut self, item: MetadataItem) -> &mut Self {
         self.metadata.push(item);
+        self
+    }
+
+    /// Remove the last metadata item
+    pub fn remove_last_metadata(&mut self) -> &mut Self {
+        self.metadata.pop();
+        self
+    }
+
+    /// Remove and return the last metadata item
+    ///
+    /// ## Return
+    /// - `Some(MetadataItem)`: The last metadata item
+    /// - `None`: If no metadata exists
+    pub fn take_last_metadata(&mut self) -> Option<MetadataItem> {
+        self.metadata.pop()
+    }
+
+    /// Clear all metadata entries
+    pub fn clear_metadatas(&mut self) -> &mut Self {
+        self.metadata.clear();
         self
     }
 
@@ -273,6 +316,61 @@ impl EpubBuilder<EpubVersion3> {
         }
     }
 
+    /// Remove manifest item and corresponding resource file
+    ///
+    /// This function removes the manifest item from the manifest list and also deletes
+    /// the corresponding resource file from the temporary directory.
+    ///
+    /// ## Parameters
+    /// - `id`: The unique identifier of the manifest item to remove
+    ///
+    /// ## Return
+    /// - `Ok(&mut Self)` Successfully removed the manifest item
+    /// - `Err(EpubError)` Error occurred during the removal process
+    pub fn remove_manifest(&mut self, id: &str) -> Result<&mut Self, EpubError> {
+        if let Some(manifest) = self.manifest.remove(id) {
+            let target_path = self.normalize_manifest_path(&manifest.path, &manifest.id)?;
+            fs::remove_file(target_path)?;
+        }
+
+        Ok(self)
+    }
+
+    /// Remove and return the specified manifest item
+    ///
+    /// ## Parameters
+    /// - `id`: The unique identifier of the manifest item to remove
+    ///
+    /// ## Return
+    /// - `Some(ManifestItem)`: The removed manifest item
+    /// - `None`: If the manifest item does not exist or error occurs during the removal process
+    pub fn take_manifest(&mut self, id: &str) -> Option<ManifestItem> {
+        if let Some(manifest) = self.manifest.remove(id) {
+            let target_path = self
+                .normalize_manifest_path(&manifest.path, &manifest.id)
+                .ok()?;
+            fs::remove_file(target_path).ok()?;
+
+            return Some(manifest);
+        }
+
+        None
+    }
+
+    /// Clear all manifest items and their corresponding resource files
+    ///
+    /// ## Return
+    /// - `Ok(&mut Self)` - Successfully cleared all manifest items, returns a reference to itself
+    /// - `Err(EpubError)` - Error occurred during the clearing process
+    pub fn clear_manifests(&mut self) -> Result<&mut Self, EpubError> {
+        let keys = self.manifest.keys().cloned().collect::<Vec<String>>();
+        for id in keys {
+            self.remove_manifest(&id)?;
+        }
+
+        Ok(self)
+    }
+
     /// Add spine item
     ///
     /// The spine item defines the reading order of the book.
@@ -281,6 +379,27 @@ impl EpubBuilder<EpubVersion3> {
     /// - `item`: Spine item to add
     pub fn add_spine(&mut self, item: SpineItem) -> &mut Self {
         self.spine.push(item);
+        self
+    }
+
+    /// Remove the last spine item from the builder
+    pub fn remove_last_spine(&mut self) -> &mut Self {
+        self.spine.pop();
+        self
+    }
+
+    /// Remove and return the last spine item from the builder
+    ///
+    /// ## Return
+    /// - `Some(SpineItem)`: The last spine item if it existed
+    /// - `None`: If no spine items exist in the list
+    pub fn take_last_spine(&mut self) -> Option<SpineItem> {
+        self.spine.pop()
+    }
+
+    /// Clear all spine items from the builder
+    pub fn clear_spines(&mut self) -> &mut Self {
+        self.spine.clear();
         self
     }
 
@@ -304,6 +423,21 @@ impl EpubBuilder<EpubVersion3> {
         self
     }
 
+    /// Remove the last catalog item
+    pub fn remove_last_catalog_item(&mut self) -> &mut Self {
+        self.catalog.pop();
+        self
+    }
+
+    /// Remove and return the last catalog item
+    ///
+    /// ## Return
+    /// - `Some(NavPoint)`: The last catalog item if it existed
+    /// - `None`: If no catalog items exist in the list
+    pub fn take_last_catalog_item(&mut self) -> Option<NavPoint> {
+        self.catalog.pop()
+    }
+
     /// Re-/ Set catalog
     ///
     /// The passed list will overwrite existing data.
@@ -313,6 +447,30 @@ impl EpubBuilder<EpubVersion3> {
     pub fn set_catalog(&mut self, catalog: Vec<NavPoint>) -> &mut Self {
         self.catalog = catalog;
         self
+    }
+
+    /// Clear all catalog items
+    pub fn clear_catalog(&mut self) -> &mut Self {
+        self.catalog.clear();
+        self
+    }
+
+    /// Clear all data from the builder
+    ///
+    /// This function clears all metadata, manifest items, spine items, catalog items, etc.
+    /// from the builder, effectively resetting it to an empty state.
+    ///
+    /// ## Return
+    /// - `Ok(&mut Self)`: Successfully cleared all data
+    /// - `Err(EpubError)`: Error occurred during the clearing process (specifically during manifest clearing)
+    pub fn clear_all(&mut self) -> Result<&mut Self, EpubError> {
+        self.catalog_title = String::new();
+
+        Ok(self
+            .clear_metadatas()
+            .clear_manifests()?
+            .clear_spines()
+            .clear_catalog())
     }
 
     /// Builds an EPUB file and saves it to the specified path
@@ -330,6 +488,7 @@ impl EpubBuilder<EpubVersion3> {
         self.make_container_xml()?;
         self.make_navigation_document()?;
         self.make_opf_file()?;
+        self.remove_empty_dirs()?;
 
         if let Some(parent) = output_path.as_ref().parent() {
             if !parent.exists() {
@@ -353,8 +512,10 @@ impl EpubBuilder<EpubVersion3> {
 
             if path.is_file() {
                 zip.start_file(target_path, options)?;
+
                 let mut buf = Vec::new();
                 File::open(path)?.read_to_end(&mut buf)?;
+
                 zip.write_all(&buf)?;
             } else if path.is_dir() {
                 zip.add_directory(target_path, options)?;
@@ -821,6 +982,36 @@ impl EpubBuilder<EpubVersion3> {
 
         Ok(target_path)
     }
+
+    /// Remove empty directories under the builder temporary directory
+    ///
+    /// By enumerate directories under `self.temp_dir` (excluding the root itself)
+    /// and deletes directories that are empty. Directories are processed from deepest
+    /// to shallowest so that parent directories which become empty after child
+    /// deletion can also be removed.
+    ///
+    /// ## Return
+    /// - `Ok(())`: Successfully removed all empty directories
+    /// - `Err(EpubError)`: IO error
+    fn remove_empty_dirs(&self) -> Result<(), EpubError> {
+        let mut dirs = WalkDir::new(self.temp_dir.as_path())
+            .min_depth(1)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_dir())
+            .map(|entry| entry.into_path())
+            .collect::<Vec<PathBuf>>();
+
+        dirs.sort_by_key(|p| Reverse(p.components().count()));
+
+        for dir in dirs {
+            if fs::read_dir(&dir)?.next().is_none() {
+                fs::remove_dir(dir)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<Version> Drop for EpubBuilder<Version> {
@@ -919,6 +1110,80 @@ mod tests {
     }
 
     #[test]
+    fn test_remove_last_rootfile() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        assert!(builder.add_rootfile("first.opf").is_ok());
+        assert!(builder.add_rootfile("second.opf").is_ok());
+        assert!(builder.add_rootfile("third.opf").is_ok());
+        assert_eq!(builder.rootfiles.len(), 3);
+
+        let result = builder.remove_last_rootfile();
+        assert_eq!(result.rootfiles.len(), 2);
+        assert_eq!(builder.rootfiles, vec!["first.opf", "second.opf"]);
+
+        builder.remove_last_rootfile();
+        assert_eq!(builder.rootfiles.len(), 1);
+        assert_eq!(builder.rootfiles[0], "first.opf");
+
+        builder.remove_last_rootfile();
+        assert!(builder.rootfiles.is_empty());
+
+        builder.remove_last_rootfile();
+        assert!(builder.rootfiles.is_empty());
+    }
+
+    #[test]
+    fn test_take_last_rootfile() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        let result = builder.take_last_rootfile();
+        assert!(result.is_none());
+
+        builder.add_rootfile("first.opf").unwrap();
+        builder.add_rootfile("second.opf").unwrap();
+        builder.add_rootfile("third.opf").unwrap();
+        assert_eq!(builder.rootfiles.len(), 3);
+
+        let result = builder.take_last_rootfile();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "third.opf");
+        assert_eq!(builder.rootfiles.len(), 2);
+
+        let result = builder.take_last_rootfile();
+        assert_eq!(result.unwrap(), "second.opf");
+        assert_eq!(builder.rootfiles.len(), 1);
+
+        let result = builder.take_last_rootfile();
+        assert_eq!(result.unwrap(), "first.opf");
+        assert!(builder.rootfiles.is_empty());
+
+        let result = builder.take_last_rootfile();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_clear_rootfiles() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        builder.clear_rootfiles();
+        assert!(builder.rootfiles.is_empty());
+
+        builder.add_rootfile("first.opf").unwrap();
+        builder.add_rootfile("second.opf").unwrap();
+        builder.add_rootfile("third.opf").unwrap();
+        assert_eq!(builder.rootfiles.len(), 3);
+
+        builder.clear_rootfiles();
+        assert!(builder.rootfiles.is_empty());
+        assert_eq!(builder.rootfiles.len(), 0);
+
+        builder.add_rootfile("new.opf").unwrap();
+        assert_eq!(builder.rootfiles.len(), 1);
+        assert_eq!(builder.rootfiles[0], "new.opf");
+    }
+
+    #[test]
     fn test_add_metadata() {
         let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
         let metadata_item = MetadataItem::new("title", "Test Book");
@@ -928,6 +1193,62 @@ mod tests {
         assert_eq!(builder.metadata.len(), 1);
         assert_eq!(builder.metadata[0].property, "title");
         assert_eq!(builder.metadata[0].value, "Test Book");
+    }
+
+    #[test]
+    fn test_remove_last_metadata() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+        builder.add_metadata(MetadataItem::new("title", "Test Book"));
+        builder.add_metadata(MetadataItem::new("author", "Test Author"));
+
+        assert_eq!(builder.metadata.len(), 2);
+
+        builder.remove_last_metadata();
+
+        assert_eq!(builder.metadata.len(), 1);
+        assert_eq!(builder.metadata[0].property, "title");
+
+        builder.remove_last_metadata();
+        builder.remove_last_metadata();
+        assert_eq!(builder.metadata.len(), 0);
+    }
+
+    #[test]
+    fn test_take_last_metadata() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+        let metadata1 = MetadataItem::new("title", "Test Book");
+        let metadata2 = MetadataItem::new("author", "Test Author");
+
+        builder.add_metadata(metadata1);
+        builder.add_metadata(metadata2);
+        assert_eq!(builder.metadata.len(), 2);
+
+        let taken = builder.take_last_metadata();
+        assert!(taken.is_some());
+        assert_eq!(taken.unwrap().property, "author");
+        assert_eq!(builder.metadata.len(), 1);
+
+        let _ = builder.take_last_metadata();
+        let result = builder.take_last_metadata();
+        assert!(result.is_none());
+        assert_eq!(builder.metadata.len(), 0);
+    }
+
+    #[test]
+    fn test_clear_metadatas() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+        builder.add_metadata(MetadataItem::new("title", "Test Book"));
+        builder.add_metadata(MetadataItem::new("author", "Test Author"));
+        builder.add_metadata(MetadataItem::new("language", "en"));
+
+        assert_eq!(builder.metadata.len(), 3);
+
+        builder.clear_metadatas();
+
+        assert_eq!(builder.metadata.len(), 0);
+
+        builder.clear_metadatas();
+        assert_eq!(builder.metadata.len(), 0);
     }
 
     #[test]
@@ -1023,6 +1344,137 @@ mod tests {
     }
 
     #[test]
+    fn test_remove_manifest() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+        builder.add_rootfile("package.opf").unwrap();
+
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item1", "content1.xhtml").unwrap(),
+            )
+            .unwrap();
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item2", "content2.xhtml").unwrap(),
+            )
+            .unwrap();
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item3", "content3.xhtml").unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(builder.manifest.len(), 3);
+
+        let result = builder.remove_manifest("item2");
+        assert!(result.is_ok());
+        assert_eq!(builder.manifest.len(), 2);
+        assert!(!builder.manifest.contains_key("item2"));
+        assert!(builder.manifest.contains_key("item1"));
+        assert!(builder.manifest.contains_key("item3"));
+
+        builder.remove_manifest("item1").unwrap();
+        assert_eq!(builder.manifest.len(), 1);
+        assert!(builder.manifest.contains_key("item3"));
+
+        let result = builder.remove_manifest("nonexistent");
+        assert!(result.is_ok());
+        assert_eq!(builder.manifest.len(), 1);
+    }
+
+    #[test]
+    fn test_take_manifest() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+        builder.add_rootfile("package.opf").unwrap();
+
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item1", "content1.xhtml").unwrap(),
+            )
+            .unwrap();
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item2", "content2.xhtml").unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(builder.manifest.len(), 2);
+
+        let taken = builder.take_manifest("item1");
+        assert!(taken.is_some());
+        assert_eq!(taken.unwrap().id, "item1");
+        assert_eq!(builder.manifest.len(), 1);
+        assert!(!builder.manifest.contains_key("item1"));
+
+        let taken = builder.take_manifest("item2");
+        assert!(taken.is_some());
+        assert_eq!(taken.unwrap().id, "item2");
+        assert!(builder.manifest.is_empty());
+
+        let taken = builder.take_manifest("item1");
+        assert!(taken.is_none());
+
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item3", "content3.xhtml").unwrap(),
+            )
+            .unwrap();
+        let taken = builder.take_manifest("nonexistent");
+        assert!(taken.is_none());
+        assert_eq!(builder.manifest.len(), 1);
+    }
+
+    #[test]
+    fn test_clear_manifests() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+        builder.add_rootfile("package.opf").unwrap();
+
+        let result = builder.clear_manifests();
+        assert!(result.is_ok());
+        assert!(builder.manifest.is_empty());
+
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item1", "content1.xhtml").unwrap(),
+            )
+            .unwrap();
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item2", "content2.xhtml").unwrap(),
+            )
+            .unwrap();
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("item3", "content3.xhtml").unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(builder.manifest.len(), 3);
+
+        let result = builder.clear_manifests();
+        assert!(result.is_ok());
+        assert!(builder.manifest.is_empty());
+
+        builder
+            .add_manifest(
+                "./test_case/Overview.xhtml",
+                ManifestItem::new("new_item", "new_content.xhtml").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(builder.manifest.len(), 1);
+        assert_eq!(builder.manifest.get("new_item").unwrap().id, "new_item");
+    }
+
+    #[test]
     fn test_add_spine() {
         let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
         let spine_item = SpineItem::new("test_item");
@@ -1031,6 +1483,81 @@ mod tests {
 
         assert_eq!(builder.spine.len(), 1);
         assert_eq!(builder.spine[0].idref, "test_item");
+    }
+
+    #[test]
+    fn test_remove_last_spine() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        builder.add_spine(SpineItem::new("chapter1"));
+        builder.add_spine(SpineItem::new("chapter2"));
+        builder.add_spine(SpineItem::new("chapter3"));
+        assert_eq!(builder.spine.len(), 3);
+
+        builder.remove_last_spine();
+        assert_eq!(builder.spine.len(), 2);
+        assert_eq!(builder.spine[0].idref, "chapter1");
+        assert_eq!(builder.spine[1].idref, "chapter2");
+
+        builder.remove_last_spine();
+        assert_eq!(builder.spine.len(), 1);
+        assert_eq!(builder.spine[0].idref, "chapter1");
+
+        builder.remove_last_spine();
+        assert!(builder.spine.is_empty());
+
+        builder.remove_last_spine();
+        assert!(builder.spine.is_empty());
+    }
+
+    #[test]
+    fn test_take_last_spine() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        let result = builder.take_last_spine();
+        assert!(result.is_none());
+
+        builder.add_spine(SpineItem::new("chapter1"));
+        builder.add_spine(SpineItem::new("chapter2"));
+        builder.add_spine(SpineItem::new("chapter3"));
+        assert_eq!(builder.spine.len(), 3);
+
+        let result = builder.take_last_spine();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().idref, "chapter3");
+        assert_eq!(builder.spine.len(), 2);
+
+        let result = builder.take_last_spine();
+        assert_eq!(result.unwrap().idref, "chapter2");
+        assert_eq!(builder.spine.len(), 1);
+
+        let result = builder.take_last_spine();
+        assert_eq!(result.unwrap().idref, "chapter1");
+        assert!(builder.spine.is_empty());
+
+        let result = builder.take_last_spine();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_clear_spines() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        builder.clear_spines();
+        assert!(builder.spine.is_empty());
+
+        builder.add_spine(SpineItem::new("chapter1"));
+        builder.add_spine(SpineItem::new("chapter2"));
+        builder.add_spine(SpineItem::new("chapter3"));
+        assert_eq!(builder.spine.len(), 3);
+
+        builder.clear_spines();
+        assert!(builder.spine.is_empty());
+        assert_eq!(builder.spine.len(), 0);
+
+        builder.add_spine(SpineItem::new("new_chapter"));
+        assert_eq!(builder.spine.len(), 1);
+        assert_eq!(builder.spine[0].idref, "new_chapter");
     }
 
     #[test]
@@ -1055,6 +1582,60 @@ mod tests {
     }
 
     #[test]
+    fn test_remove_last_catalog_item() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        builder.add_catalog_item(NavPoint::new("Chapter 1"));
+        builder.add_catalog_item(NavPoint::new("Chapter 2"));
+        builder.add_catalog_item(NavPoint::new("Chapter 3"));
+        assert_eq!(builder.catalog.len(), 3);
+
+        builder.remove_last_catalog_item();
+        assert_eq!(builder.catalog.len(), 2);
+        assert_eq!(builder.catalog[0].label, "Chapter 1");
+        assert_eq!(builder.catalog[1].label, "Chapter 2");
+
+        builder.remove_last_catalog_item();
+        assert_eq!(builder.catalog.len(), 1);
+        assert_eq!(builder.catalog[0].label, "Chapter 1");
+
+        builder.remove_last_catalog_item();
+        assert!(builder.catalog.is_empty());
+
+        builder.remove_last_catalog_item();
+        assert!(builder.catalog.is_empty());
+    }
+
+    #[test]
+    fn test_take_last_catalog_item() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        let result = builder.take_last_catalog_item();
+        assert!(result.is_none());
+
+        builder.add_catalog_item(NavPoint::new("Chapter 1"));
+        builder.add_catalog_item(NavPoint::new("Chapter 2"));
+        builder.add_catalog_item(NavPoint::new("Chapter 3"));
+        assert_eq!(builder.catalog.len(), 3);
+
+        let result = builder.take_last_catalog_item();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().label, "Chapter 3");
+        assert_eq!(builder.catalog.len(), 2);
+
+        let result = builder.take_last_catalog_item();
+        assert_eq!(result.unwrap().label, "Chapter 2");
+        assert_eq!(builder.catalog.len(), 1);
+
+        let result = builder.take_last_catalog_item();
+        assert_eq!(result.unwrap().label, "Chapter 1");
+        assert!(builder.catalog.is_empty());
+
+        let result = builder.take_last_catalog_item();
+        assert!(result.is_none());
+    }
+
+    #[test]
     fn test_set_catalog() {
         let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
         let nav_points = vec![NavPoint::new("Chapter 1"), NavPoint::new("Chapter 2")];
@@ -1064,6 +1645,63 @@ mod tests {
         assert_eq!(builder.catalog.len(), 2);
         assert_eq!(builder.catalog[0].label, "Chapter 1");
         assert_eq!(builder.catalog[1].label, "Chapter 2");
+    }
+
+    #[test]
+    fn test_clear_catalog() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        builder.clear_catalog();
+        assert!(builder.catalog.is_empty());
+
+        builder.add_catalog_item(NavPoint::new("Chapter 1"));
+        builder.add_catalog_item(NavPoint::new("Chapter 2"));
+        builder.add_catalog_item(NavPoint::new("Chapter 3"));
+        assert_eq!(builder.catalog.len(), 3);
+
+        builder.clear_catalog();
+        assert!(builder.catalog.is_empty());
+        assert_eq!(builder.catalog.len(), 0);
+
+        builder.add_catalog_item(NavPoint::new("New Chapter"));
+        assert_eq!(builder.catalog.len(), 1);
+        assert_eq!(builder.catalog[0].label, "New Chapter");
+    }
+
+    #[test]
+    fn test_clear_all() {
+        let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+        builder.add_rootfile("content.opf").unwrap();
+        builder.add_metadata(MetadataItem::new("title", "Test Book"));
+        builder.add_metadata(MetadataItem::new("language", "en"));
+        builder.add_spine(SpineItem::new("chapter1"));
+        builder.add_spine(SpineItem::new("chapter2"));
+        builder.add_catalog_item(NavPoint::new("Chapter 1"));
+        builder.add_catalog_item(NavPoint::new("Chapter 2"));
+        builder.set_catalog_title("Table of Contents");
+
+        assert_eq!(builder.metadata.len(), 2);
+        assert_eq!(builder.spine.len(), 2);
+        assert_eq!(builder.catalog.len(), 2);
+        assert_eq!(builder.catalog_title, "Table of Contents");
+
+        let result = builder.clear_all();
+        assert!(result.is_ok());
+
+        assert!(builder.metadata.is_empty());
+        assert!(builder.spine.is_empty());
+        assert!(builder.catalog.is_empty());
+        assert!(builder.catalog_title.is_empty());
+        assert!(builder.manifest.is_empty());
+
+        builder.add_metadata(MetadataItem::new("title", "New Book"));
+        builder.add_spine(SpineItem::new("new_chapter"));
+        builder.add_catalog_item(NavPoint::new("New Chapter"));
+
+        assert_eq!(builder.metadata.len(), 1);
+        assert_eq!(builder.spine.len(), 1);
+        assert_eq!(builder.catalog.len(), 1);
     }
 
     #[test]
