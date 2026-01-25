@@ -781,6 +781,35 @@ impl PartialEq for NavPoint {
         self.play_order == other.play_order
     }
 }
+#[cfg(feature = "builder")]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Footnote {
+    pub locate: usize,   // 脚注在段落中的位置
+    pub content: String, // 脚注内容
+}
+
+impl Ord for Footnote {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.locate.cmp(&other.locate)
+    }
+}
+
+impl PartialOrd for Footnote {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[cfg(feature = "builder")]
+pub enum BlockType {
+    Text,
+    Quote,
+    Title,
+    Image,
+    Audio,
+    Video,
+    MathML,
+}
 
 #[cfg(test)]
 mod tests {

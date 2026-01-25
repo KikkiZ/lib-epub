@@ -299,6 +299,12 @@ pub enum EpubBuilderError {
     #[error("A rootfile path should be a relative path and not start with '../'.")]
     IllegalRootfilePath,
 
+    #[error("")]
+    InvalidFootnoteLocate { max_locate: usize },
+
+    #[error("")]
+    InvalidMathMLFormat { error: String },
+
     /// Manifest Circular Reference error
     ///
     /// This error is triggered when a fallback relationship between manifest items forms a cycle.
@@ -318,11 +324,20 @@ pub enum EpubBuilderError {
     #[error("Requires at least one 'title', 'language', and 'identifier' with id 'pub-id'.")]
     MissingNecessaryMetadata,
 
+    #[error("")]
+    MissingNecessaryBlockData {
+        block_type: String,
+        missing_data: String,
+    },
+
     /// Navigation information uninitialized error
     ///
     /// This error is triggered when attempting to build an EPUB but without setting navigation information.
     #[error("Navigation information is not set.")]
     NavigationInfoUninitalized,
+
+    #[error("")]
+    NotExpectedFileFormat,
 
     /// Missing rootfile error
     ///

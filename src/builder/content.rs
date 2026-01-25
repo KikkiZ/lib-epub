@@ -1,7 +1,5 @@
-#![allow(dead_code)]
-
 use std::{
-    collections::BTreeSet,
+    collections::HashMap,
     fs::{self, File},
     io::{Cursor, Read},
     path::{Path, PathBuf},
@@ -16,40 +14,26 @@ use quick_xml::{
 use crate::{
     builder::XmlWriter,
     error::{EpubBuilderError, EpubError},
+    types::{BlockType, Footnote},
 };
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct Footnote {
-    locate: usize,   // 脚注在段落中的位置
-    content: String, // 脚注内容
-}
-
-impl Ord for Footnote {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.locate.cmp(&other.locate)
-    }
-}
-
-impl PartialOrd for Footnote {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-enum Block {
+pub enum Block {
     /// 文本段落
+    #[non_exhaustive]
     Text {
         content: String,
         footnotes: Vec<Footnote>,
     },
 
     /// 引用段落
+    #[non_exhaustive]
     Quote {
         content: String,
         footnotes: Vec<Footnote>,
     },
 
     /// 标题段落
+    #[non_exhaustive]
     Title {
         content: String,
         footnotes: Vec<Footnote>,
@@ -57,6 +41,7 @@ enum Block {
     },
 
     /// 图片段落
+    #[non_exhaustive]
     Image {
         url: PathBuf,
         alt: Option<String>,
@@ -65,6 +50,7 @@ enum Block {
     },
 
     /// 音频段落
+    #[non_exhaustive]
     Audio {
         url: PathBuf,
         fallback: String, // 音频的替代文本
@@ -73,6 +59,7 @@ enum Block {
     },
 
     /// 视频段落
+    #[non_exhaustive]
     Video {
         url: PathBuf,
         fallback: String, // 视频的替代文本
@@ -81,6 +68,7 @@ enum Block {
     },
 
     /// MathML 段落
+    #[non_exhaustive]
     MathML {
         element_str: String,
         fallback_image: Option<PathBuf>,
@@ -90,7 +78,11 @@ enum Block {
 }
 
 impl Block {
-    fn make(&mut self, writer: &mut XmlWriter, start_index: usize) -> Result<(), EpubError> {
+    pub(crate) fn make(
+        &mut self,
+        writer: &mut XmlWriter,
+        start_index: usize,
+    ) -> Result<(), EpubError> {
         match self {
             Block::Text { content, footnotes } => {
                 writer.write_event(Event::Start(
@@ -107,7 +99,7 @@ impl Block {
                     [
                         ("class", "content-block"),
                         ("cite", "SOME ATTR NEED TO BE SET"),
-                    ]
+                    ],
                 )))?;
                 writer.write_event(Event::Start(BytesStart::new("p")))?;
 
@@ -158,10 +150,11 @@ impl Block {
             Block::Audio { url, fallback, caption, footnotes } => {
                 let url = format!("./audio/{}", url.file_name().unwrap().to_string_lossy());
 
-                let mut attr = Vec::new();
-                attr.push(("src", url.as_str()));
-                attr.push(("class", "audio-block"));
-                attr.push(("controls", "controls")); // attribute special spelling for xhtml
+                let attr = vec![
+                    ("src", url.as_str()),
+                    ("class", "audio-block"),
+                    ("controls", "controls"), // attribute special spelling for xhtml
+                ];
 
                 writer.write_event(Event::Start(
                     BytesStart::new("figure").with_attributes([("class", "content-block")]),
@@ -188,10 +181,11 @@ impl Block {
             Block::Video { url, fallback, caption, footnotes } => {
                 let url = format!("./video/{}", url.file_name().unwrap().to_string_lossy());
 
-                let mut attr = Vec::new();
-                attr.push(("src", url.as_str()));
-                attr.push(("class", "video-block"));
-                attr.push(("controls", "controls")); // attribute special spelling for xhtml
+                let attr = vec![
+                    ("src", url.as_str()),
+                    ("class", "video-block"),
+                    ("controls", "controls"), // attribute special spelling for xhtml
+                ];
 
                 writer.write_event(Event::Start(
                     BytesStart::new("figure").with_attributes([("class", "content-block")]),
@@ -255,7 +249,7 @@ impl Block {
         Ok(())
     }
 
-    fn take_footnotes(&self) -> Vec<Footnote> {
+    pub fn take_footnotes(&self) -> Vec<Footnote> {
         match self {
             Block::Text { footnotes, .. } => footnotes.to_vec(),
             Block::Quote { footnotes, .. } => footnotes.to_vec(),
@@ -272,20 +266,31 @@ impl Block {
             return vec![content.to_string()];
         }
 
-        let chars = content.chars().collect::<Vec<char>>();
-        let mut result = Vec::new();
-        let mut last_pos = 0;
+        let mut result = Vec::with_capacity(index_list.len() + 1);
+        let mut char_iter = content.chars().enumerate();
 
-        for locate in index_list {
-            let segment = chars[last_pos..*locate].iter().collect();
-            result.push(segment);
+        // 优化：单次迭代，无需完整字符数组
+        let mut current_char_idx = 0;
+        for &target_idx in index_list {
+            let mut segment = String::new();
 
-            last_pos = *locate;
+            while current_char_idx < target_idx {
+                if let Some((_, ch)) = char_iter.next() {
+                    segment.push(ch);
+                    current_char_idx += 1;
+                } else {
+                    break;
+                }
+            }
+
+            if !segment.is_empty() {
+                result.push(segment);
+            }
         }
 
-        let segment = chars[last_pos..].iter().collect::<String>();
-        if !segment.is_empty() {
-            result.push(segment);
+        let remainder = char_iter.map(|(_, ch)| ch).collect::<String>();
+        if !remainder.is_empty() {
+            result.push(remainder);
         }
 
         result
@@ -294,7 +299,7 @@ impl Block {
     fn make_text(
         writer: &mut XmlWriter,
         content: &str,
-        footnotes: &mut Vec<Footnote>,
+        footnotes: &mut [Footnote],
         start_index: usize,
     ) -> Result<(), EpubError> {
         if footnotes.is_empty() {
@@ -304,34 +309,30 @@ impl Block {
 
         footnotes.sort_unstable();
 
-        // 获取所有脚注的索引并去重
-        let index_list = footnotes
-            .iter()
-            .map(|footnote| footnote.locate)
-            .collect::<BTreeSet<usize>>()
-            .into_iter()
-            .collect::<Vec<usize>>();
-        let content_list = Self::split_content_by_index(content, &index_list);
+        let mut position_to_count = HashMap::new();
+        for footnote in footnotes.iter() {
+            *position_to_count.entry(footnote.locate).or_insert(0usize) += 1;
+        }
+
+        let mut positions = position_to_count.keys().copied().collect::<Vec<usize>>();
+        positions.sort_unstable();
 
         let mut current_index = start_index;
-        for (index, content) in content_list.iter().enumerate() {
-            writer.write_event(Event::Text(BytesText::new(content)))?;
+        let content_list = Self::split_content_by_index(content, &positions);
+        for (index, segment) in content_list.iter().enumerate() {
+            writer.write_event(Event::Text(BytesText::new(segment)))?;
 
             // 当前的locate，也即当前切片的结尾位置
-            if let Some(&currtent_locate) = index_list.get(index) {
-                let count = footnotes
-                    .iter()
-                    .filter(|&footnote| footnote.locate == currtent_locate)
-                    .count(); // 脚注数量
-
-                for _ in 0..count {
-                    Self::make_footnotes(writer, current_index)?;
-                    current_index += 1;
+            if let Some(&position) = positions.get(index) {
+                if let Some(&count) = position_to_count.get(&position) {
+                    for _ in 0..count {
+                        Self::make_footnotes(writer, current_index)?;
+                        current_index += 1;
+                    }
                 }
-            } else {
-                continue;
-            };
+            }
         }
+
         Ok(())
     }
 
@@ -339,6 +340,7 @@ impl Block {
     fn make_footnotes(writer: &mut XmlWriter, index: usize) -> Result<(), EpubError> {
         writer.write_event(Event::Start(BytesStart::new("a").with_attributes([
             ("href", format!("#footnote-{}", index).as_str()),
+            ("id", format!("ref-{}", index).as_str()),
             ("class", "footnote-ref"),
         ])))?;
         writer.write_event(Event::Text(BytesText::new(&format!("[{}]", index))))?;
@@ -368,17 +370,7 @@ impl Block {
     }
 }
 
-enum BlockType {
-    Text,
-    Quote,
-    Title,
-    Image,
-    Audio,
-    Video,
-    MathML,
-}
-
-struct BlockBuilder {
+pub struct BlockBuilder {
     block_type: BlockType,
     content: Option<String>,
     level: Option<usize>,
@@ -628,12 +620,10 @@ impl BlockBuilder {
             Block::Text { content, footnotes }
             | Block::Quote { content, footnotes }
             | Block::Title { content, footnotes, .. } => {
+                let max_locate = content.chars().count();
                 for footnote in footnotes.iter() {
                     if footnote.locate == 0 || footnote.locate > content.chars().count() {
-                        return Err(EpubBuilderError::InvalidFootnoteLocate {
-                            max_locate: content.chars().count(),
-                        }
-                        .into());
+                        return Err(EpubBuilderError::InvalidFootnoteLocate { max_locate }.into());
                     }
                 }
 
@@ -645,12 +635,12 @@ impl BlockBuilder {
             | Block::Video { caption, footnotes, .. }
             | Block::Audio { caption, footnotes, .. } => {
                 if let Some(caption) = caption {
+                    let max_locate = caption.chars().count();
                     for footnote in footnotes.iter() {
                         if footnote.locate == 0 || footnote.locate > caption.chars().count() {
-                            return Err(EpubBuilderError::InvalidFootnoteLocate {
-                                max_locate: caption.chars().count(),
-                            }
-                            .into());
+                            return Err(
+                                EpubBuilderError::InvalidFootnoteLocate { max_locate }.into()
+                            );
                         }
                     }
                 } else if !footnotes.is_empty() {
@@ -663,7 +653,7 @@ impl BlockBuilder {
     }
 }
 
-struct ContentBuilder {
+pub struct ContentBuilder {
     pub blocks: Vec<Block>,
     language: String,
     title: String,
@@ -805,10 +795,15 @@ impl ContentBuilder {
                     .with_attributes([("id", format!("footnote-{}", index).as_str())]),
             ))?;
             writer.write_event(Event::Start(BytesStart::new("p")))?;
-            writer.write_event(Event::Text(BytesText::new(&format!(
-                "[{}]: {}",
-                index, &footnote.content
-            ))))?;
+
+            writer.write_event(Event::Start(
+                BytesStart::new("a")
+                    .with_attributes([("href", format!("#ref-{}", index).as_str())]),
+            ))?;
+            writer.write_event(Event::Text(BytesText::new(&format!("[{}]", index,))))?;
+            writer.write_event(Event::End(BytesEnd::new("a")))?;
+            writer.write_event(Event::Text(BytesText::new(&footnote.content)))?;
+
             writer.write_event(Event::End(BytesEnd::new("p")))?;
             writer.write_event(Event::End(BytesEnd::new("li")))?;
 

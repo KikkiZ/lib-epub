@@ -63,6 +63,8 @@ use crate::{
     },
 };
 
+pub mod content;
+
 type XmlWriter = Writer<Cursor<Vec<u8>>>;
 
 // struct EpubVersion2;
