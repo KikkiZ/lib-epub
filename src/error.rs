@@ -299,11 +299,24 @@ pub enum EpubBuilderError {
     #[error("A rootfile path should be a relative path and not start with '../'.")]
     IllegalRootfilePath,
 
-    #[error("")]
+    /// Invalid footnote locate error
+    ///
+    /// This error is triggered when the footnote locate is out of range.
+    #[error("The footnote locate must be in the range of [0, {max_locate}].")]
     InvalidFootnoteLocate { max_locate: usize },
 
-    #[error("")]
+    /// Invalid mathml format error
+    ///
+    /// This error is triggered when parsing mathml fails.
+    #[error("{error}")]
     InvalidMathMLFormat { error: String },
+
+    /// Invalid target path error
+    ///
+    /// This error is triggered when the target path terminates in a root or prefix,
+    /// or if it's the empty string.
+    #[error("The '{target_path}' target path is invalid.")]
+    InvalidTargetPath { target_path: String },
 
     /// Manifest Circular Reference error
     ///
@@ -324,7 +337,10 @@ pub enum EpubBuilderError {
     #[error("Requires at least one 'title', 'language', and 'identifier' with id 'pub-id'.")]
     MissingNecessaryMetadata,
 
-    #[error("")]
+    /// Missing necessary block data error
+    ///
+    /// This error is triggered when a block is missing necessary data.
+    #[error("The block '{block_type}' is missing necessary data '{missing_data}'")]
     MissingNecessaryBlockData {
         block_type: String,
         missing_data: String,
@@ -336,7 +352,10 @@ pub enum EpubBuilderError {
     #[error("Navigation information is not set.")]
     NavigationInfoUninitalized,
 
-    #[error("")]
+    /// Not expected file format error
+    ///
+    /// This error is triggered when build a `Blocl` with unmatched file format.
+    #[error("The file format is not current block expected.")]
     NotExpectedFileFormat,
 
     /// Missing rootfile error

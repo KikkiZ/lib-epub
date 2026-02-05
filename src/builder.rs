@@ -54,6 +54,8 @@ use quick_xml::{
 use walkdir::WalkDir;
 use zip::{CompressionMethod, ZipWriter, write::FileOptions};
 
+#[cfg(feature = "content_builder")]
+use crate::builder::content::ContentBuilder;
 use crate::{
     epub::EpubDoc,
     error::{EpubBuilderError, EpubError},
@@ -63,6 +65,7 @@ use crate::{
     },
 };
 
+#[cfg(feature = "content_builder")]
 pub mod content;
 
 type XmlWriter = Writer<Cursor<Vec<u8>>>;
@@ -139,6 +142,10 @@ pub struct EpubBuilder<Version> {
 
     /// List of catalog navigation points
     catalog: Vec<NavPoint>,
+
+    /// List of content builder
+    #[cfg(feature = "content_builder")]
+    content: Vec<(PathBuf, ContentBuilder)>,
 }
 
 impl EpubBuilder<EpubVersion3> {
@@ -166,6 +173,9 @@ impl EpubBuilder<EpubVersion3> {
 
             catalog_title: String::new(),
             catalog: vec![],
+
+            #[cfg(feature = "content_builder")]
+            content: vec![],
         })
     }
 
@@ -263,6 +273,7 @@ impl EpubBuilder<EpubVersion3> {
     ///
     /// ## Notes
     /// - At least one rootfile must be added before adding manifest items.
+    /// - If the manifest item ID already exists in the manifest, the manifest item will be overwritten.
     pub fn add_manifest(
         &mut self,
         manifest_source: &str,
@@ -457,6 +468,44 @@ impl EpubBuilder<EpubVersion3> {
         self
     }
 
+    /// Add content
+    ///
+    /// The content builder can be used to generate content for the book.
+    /// It is recommended to use the `content_builder` feature to use this function.
+    ///
+    /// ## Parameters
+    /// - `target_path`: The path to the resource file within the EPUB container
+    /// - `content`: The content builder to generate content
+    #[cfg(feature = "content_builder")]
+    pub fn add_content(&mut self, target_path: &str, content: ContentBuilder) -> &mut Self {
+        self.content.push((PathBuf::from(target_path), content));
+        self
+    }
+
+    /// Remove the last content builder
+    #[cfg(feature = "content_builder")]
+    pub fn remove_last_content(&mut self) -> &mut Self {
+        self.content.pop();
+        self
+    }
+
+    /// Remove and return the last content builder
+    ///
+    /// ## Return
+    /// - `Some((PathBuf, ContentBuilder))`: The last content builder if it existed
+    /// - `None`: If no content builders exist in the list
+    #[cfg(feature = "content_builder")]
+    pub fn take_last_content(&mut self) -> Option<(PathBuf, ContentBuilder)> {
+        self.content.pop()
+    }
+
+    /// Clear all content builders
+    #[cfg(feature = "content_builder")]
+    pub fn clear_contents(&mut self) -> &mut Self {
+        self.content.clear();
+        self
+    }
+
     /// Clear all data from the builder
     ///
     /// This function clears all metadata, manifest items, spine items, catalog items, etc.
@@ -467,12 +516,15 @@ impl EpubBuilder<EpubVersion3> {
     /// - `Err(EpubError)`: Error occurred during the clearing process (specifically during manifest clearing)
     pub fn clear_all(&mut self) -> Result<&mut Self, EpubError> {
         self.catalog_title = String::new();
-
-        Ok(self
-            .clear_metadatas()
+        self.clear_metadatas()
             .clear_manifests()?
             .clear_spines()
-            .clear_catalog())
+            .clear_catalog();
+
+        #[cfg(feature = "content_builder")]
+        self.clear_contents();
+
+        Ok(self)
     }
 
     /// Builds an EPUB file and saves it to the specified path
@@ -489,6 +541,8 @@ impl EpubBuilder<EpubVersion3> {
         // therefore, the navigation document must be created before the opf file is created.
         self.make_container_xml()?;
         self.make_navigation_document()?;
+        #[cfg(feature = "content_builder")]
+        self.make_contents()?;
         self.make_opf_file()?;
         self.remove_empty_dirs()?;
 
@@ -643,6 +697,96 @@ impl EpubBuilder<EpubVersion3> {
         let file_path = self.temp_dir.join("META-INF").join("container.xml");
         let file_data = writer.into_inner().into_inner();
         fs::write(file_path, file_data)?;
+
+        Ok(())
+    }
+
+    /// Creates the content document
+    #[cfg(feature = "content_builder")]
+    fn make_contents(&mut self) -> Result<(), EpubError> {
+        let mut buf = vec![0; 512];
+        let contents = std::mem::take(&mut self.content);
+
+        for (target, mut content) in contents.into_iter() {
+            let manifest_id = content.id.clone();
+
+            // target is relative to the epub file, so we need to normalize it
+            let absolute_target = self.normalize_manifest_path(&target, &manifest_id)?;
+            let mut resources = content.make(&absolute_target)?;
+
+            // Helper to compute absolute container path
+            let to_container_path = |p: &PathBuf| -> PathBuf {
+                match p.strip_prefix(&self.temp_dir) {
+                    Ok(rel) => PathBuf::from("/").join(rel.to_string_lossy().replace("\\", "/")),
+                    Err(_) => unreachable!("path MUST under temp directory"),
+                }
+            };
+
+            // Document (first element, guaranteed to exist)
+            let path = resources.swap_remove(0);
+            let mut file = std::fs::File::open(&path)?;
+            let _ = file.read(&mut buf)?;
+            let extension = path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            let mime = match Infer::new().get(&buf) {
+                Some(infer) => refine_mime_type(infer.mime_type(), &extension),
+                None => {
+                    return Err(EpubBuilderError::UnknownFileFormat {
+                        file_path: path.to_string_lossy().to_string(),
+                    }
+                    .into());
+                }
+            };
+
+            self.manifest.insert(
+                manifest_id.clone(),
+                ManifestItem {
+                    id: manifest_id.clone(),
+                    path: to_container_path(&path),
+                    mime,
+                    properties: None,
+                    fallback: None,
+                },
+            );
+
+            // Other resources (if any): generate stable ids and add to manifest
+            for res in resources {
+                let mut file = fs::File::open(&res)?;
+                let _ = file.read(&mut buf)?;
+                let extension = res
+                    .extension()
+                    .map(|e| e.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                let mime = match Infer::new().get(&buf) {
+                    Some(ft) => refine_mime_type(ft.mime_type(), &extension),
+                    None => {
+                        return Err(EpubBuilderError::UnknownFileFormat {
+                            file_path: path.to_string_lossy().to_string(),
+                        }
+                        .into());
+                    }
+                };
+
+                let file_name = res
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let res_id = format!("{}-{}", manifest_id, file_name);
+
+                self.manifest.insert(
+                    res_id.clone(),
+                    ManifestItem {
+                        id: res_id,
+                        path: to_container_path(&res),
+                        mime,
+                        properties: None,
+                        fallback: None,
+                    },
+                );
+            }
+        }
 
         Ok(())
     }

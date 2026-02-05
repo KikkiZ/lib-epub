@@ -781,26 +781,34 @@ impl PartialEq for NavPoint {
         self.play_order == other.play_order
     }
 }
-#[cfg(feature = "builder")]
+
+/// Represents a footnote in an content document
+///
+/// This structure represents a footnote in an EPUB content document.
+/// It contains the location within the content document and the content of the footnote.
+#[cfg(feature = "content_builder")]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Footnote {
-    pub locate: usize,   // 脚注在段落中的位置
-    pub content: String, // 脚注内容
+    pub locate: usize,
+    pub content: String,
 }
 
+#[cfg(feature = "content_builder")]
 impl Ord for Footnote {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.locate.cmp(&other.locate)
     }
 }
 
+#[cfg(feature = "content_builder")]
 impl PartialOrd for Footnote {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-#[cfg(feature = "builder")]
+/// Represents the type of a block element in the content document
+#[cfg(feature = "content_builder")]
 pub enum BlockType {
     Text,
     Quote,
@@ -1680,6 +1688,100 @@ mod tests {
                 assert_eq!(ch2.label, "Chapter 2");
                 assert_eq!(ch2.children.len(), 1);
             }
+        }
+    }
+
+    mod footnote_tests {
+        use crate::types::Footnote;
+
+        #[test]
+        fn test_footnote_basic_creation() {
+            let footnote = Footnote {
+                locate: 100,
+                content: "Sample footnote".to_string(),
+            };
+
+            assert_eq!(footnote.locate, 100);
+            assert_eq!(footnote.content, "Sample footnote");
+        }
+
+        #[test]
+        fn test_footnote_equality() {
+            let footnote1 = Footnote {
+                locate: 100,
+                content: "First note".to_string(),
+            };
+
+            let footnote2 = Footnote {
+                locate: 100,
+                content: "First note".to_string(),
+            };
+
+            let footnote3 = Footnote {
+                locate: 100,
+                content: "Different note".to_string(),
+            };
+
+            let footnote4 = Footnote {
+                locate: 200,
+                content: "First note".to_string(),
+            };
+
+            assert_eq!(footnote1, footnote2);
+            assert_ne!(footnote1, footnote3);
+            assert_ne!(footnote1, footnote4);
+        }
+
+        #[test]
+        fn test_footnote_ordering() {
+            let footnote1 = Footnote {
+                locate: 100,
+                content: "First".to_string(),
+            };
+
+            let footnote2 = Footnote {
+                locate: 200,
+                content: "Second".to_string(),
+            };
+
+            let footnote3 = Footnote {
+                locate: 150,
+                content: "Middle".to_string(),
+            };
+
+            assert!(footnote1 < footnote2);
+            assert!(footnote2 > footnote1);
+            assert!(footnote1 < footnote3);
+            assert!(footnote3 < footnote2);
+            assert_eq!(footnote1.cmp(&footnote1), std::cmp::Ordering::Equal);
+        }
+
+        #[test]
+        fn test_footnote_sorting() {
+            let mut footnotes = vec![
+                Footnote {
+                    locate: 300,
+                    content: "Third note".to_string(),
+                },
+                Footnote {
+                    locate: 100,
+                    content: "First note".to_string(),
+                },
+                Footnote {
+                    locate: 200,
+                    content: "Second note".to_string(),
+                },
+            ];
+
+            footnotes.sort();
+
+            assert_eq!(footnotes[0].locate, 100);
+            assert_eq!(footnotes[1].locate, 200);
+            assert_eq!(footnotes[2].locate, 300);
+
+            assert_eq!(footnotes[0].content, "First note");
+            assert_eq!(footnotes[1].content, "Second note");
+            assert_eq!(footnotes[2].content, "Third note");
         }
     }
 }
