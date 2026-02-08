@@ -9,16 +9,6 @@
 //! specifications, providing a unified interface for working with different versions
 //! of EPUB publications.
 //!
-//! ## Main Components
-//!
-//! - [MetadataItem] - Represents metadata entries in the publication
-//! - [MetadataRefinement] - Additional details for metadata items (EPUB 3.x)
-//! - [MetadataLinkItem] - Links to external metadata resources
-//! - [ManifestItem] - Resources declared in the publication manifest
-//! - [SpineItem] - Items defining the reading order
-//! - [NavPoint] - Navigation points in the table of contents
-//! - [EncryptionData] - Information about encrypted resources
-//!
 //! ## Builder Pattern
 //!
 //! Many of these types implement a builder pattern for easier construction when the

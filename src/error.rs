@@ -3,11 +3,6 @@
 //! This module defines the various error types that may be encountered during
 //! EPUB file parsing and processing. All errors are uniformly wrapped in the
 //! `EpubError` enumeration for convenient error handling by the caller.
-//!
-//! ## Main Error Types
-//!
-//! - [EpubError] - Enumeration of main errors during EPUB processing
-//! - [EpubBuilderError] - Specific errors during EPUB build process (requires `builder` functionality enabled)
 
 use thiserror::Error;
 

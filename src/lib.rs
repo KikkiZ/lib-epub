@@ -37,25 +37,17 @@
 //! # }
 //! ```
 //!
-//! ### Enable Builder Feature
+//! ## Feature flags
 //!
-//! Enable the builder feature in `Cargo.toml`:
+//! This crate uses 2 feature flags to reduce the needless code for your project.
+//! By default, this crate only provides structs and trait related to reading and parsing EPUB documents.
+//! If you want to use more features related to EPUB, please use the feature flag
+//! to turn on the section you need.
 //!
-//! ```toml
-//! [dependencies]
-//! lib-epub = { version = "0.0.5", features = ["builder"] }
-//! ```
-//!
-//! ## Module Description
-//!
-//! - [epub] - Core functionality for EPUB document parsing
-//! - [error] - Error type definition
-//! - [types] - Data structure definition
-//! - [builder] - EPUB build functionality (requires enabling the `builder` feature)
-//!
-//! ### Exported Trait
-//!
-//! - [DecodeBytes] - Byte data decoding trait, used to convert raw bytes into strings
+//! - `builder`: Enable `lib_epub::builder`, provides structs and trait related to building EPUB documents.
+//! - `content_builder`: Enable `lib_epub::builder::content`, provides structs and trait
+//!   related to building EPUB content documents. Enabling this feature will turn on
+//!   the `builder` feature by default.
 
 pub(crate) mod utils;
 

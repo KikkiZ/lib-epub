@@ -1,4 +1,4 @@
-//! Content Builder
+//! Epub content build functionality
 //!
 //! This module provides functionality for creating EPUB content documents.
 //!
@@ -31,7 +31,12 @@
 //! ```
 //!
 //! ## Future Work
+//!
 //! - Support more types of content `Block`
+//!
+//! ## Notes
+//!
+//! - Requires `content_builder` functionality to use this module.
 
 use std::{
     collections::HashMap,
@@ -1405,5 +1410,734 @@ impl Drop for ContentBuilder {
         if let Err(err) = fs::remove_dir_all(&self.temp_dir) {
             warn!("{}", err);
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    mod block_builder_tests {
+        use std::path::PathBuf;
+
+        use crate::{
+            builder::content::{Block, BlockBuilder},
+            error::EpubBuilderError,
+            types::{BlockType, Footnote},
+        };
+
+        #[test]
+        fn test_create_text_block() {
+            let mut builder = BlockBuilder::new(BlockType::Text);
+            builder.set_content("Hello, World!");
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Text { content, footnotes } => {
+                    assert_eq!(content, "Hello, World!");
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_create_text_block_missing_content() {
+            let builder = BlockBuilder::new(BlockType::Text);
+
+            let block = builder.build();
+            assert!(block.is_err());
+
+            let result = block.unwrap_err();
+            assert_eq!(
+                result,
+                EpubBuilderError::MissingNecessaryBlockData {
+                    block_type: "Text".to_string(),
+                    missing_data: "'content'".to_string()
+                }
+                .into()
+            )
+        }
+
+        #[test]
+        fn test_create_quote_block() {
+            let mut builder = BlockBuilder::new(BlockType::Quote);
+            builder.set_content("To be or not to be");
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Quote { content, footnotes } => {
+                    assert_eq!(content, "To be or not to be");
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_create_title_block() {
+            let mut builder = BlockBuilder::new(BlockType::Title);
+            builder.set_content("Chapter 1").set_title_level(2);
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Title { content, level, footnotes } => {
+                    assert_eq!(content, "Chapter 1");
+                    assert_eq!(level, 2);
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_create_title_block_invalid_level() {
+            let mut builder = BlockBuilder::new(BlockType::Title);
+            builder.set_content("Chapter 1").set_title_level(10);
+
+            let result = builder.build();
+            assert!(result.is_err());
+
+            let result = result.unwrap_err();
+            assert_eq!(
+                result,
+                EpubBuilderError::MissingNecessaryBlockData {
+                    block_type: "Title".to_string(),
+                    missing_data: "'content' or 'level'".to_string(),
+                }
+                .into()
+            );
+        }
+
+        #[test]
+        fn test_create_image_block() {
+            let img_path = PathBuf::from("./test_case/image.jpg");
+            let mut builder = BlockBuilder::new(BlockType::Image);
+            builder
+                .set_url(&img_path)
+                .unwrap()
+                .set_alt("Test Image")
+                .set_caption("A test image");
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Image { url, alt, caption, footnotes } => {
+                    assert_eq!(url.file_name().unwrap(), "image.jpg");
+                    assert_eq!(alt, Some("Test Image".to_string()));
+                    assert_eq!(caption, Some("A test image".to_string()));
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_create_image_block_missing_url() {
+            let builder = BlockBuilder::new(BlockType::Image);
+
+            let block = builder.build();
+            assert!(block.is_err());
+
+            let result = block.unwrap_err();
+            assert_eq!(
+                result,
+                EpubBuilderError::MissingNecessaryBlockData {
+                    block_type: "Image".to_string(),
+                    missing_data: "'url'".to_string(),
+                }
+                .into()
+            );
+        }
+
+        #[test]
+        fn test_create_audio_block() {
+            let audio_path = PathBuf::from("./test_case/audio.mp3");
+            let mut builder = BlockBuilder::new(BlockType::Audio);
+            builder
+                .set_url(&audio_path)
+                .unwrap()
+                .set_fallback("Audio not supported")
+                .set_caption("Background music");
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Audio { url, fallback, caption, footnotes } => {
+                    assert_eq!(url.file_name().unwrap(), "audio.mp3");
+                    assert_eq!(fallback, "Audio not supported");
+                    assert_eq!(caption, Some("Background music".to_string()));
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_create_video_block() {
+            let video_path = PathBuf::from("./test_case/video.mp4");
+            let mut builder = BlockBuilder::new(BlockType::Video);
+            builder
+                .set_url(&video_path)
+                .unwrap()
+                .set_fallback("Video not supported")
+                .set_caption("Demo video");
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Video { url, fallback, caption, footnotes } => {
+                    assert_eq!(url.file_name().unwrap(), "video.mp4");
+                    assert_eq!(fallback, "Video not supported");
+                    assert_eq!(caption, Some("Demo video".to_string()));
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_create_mathml_block() {
+            let mathml_content = r#"<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><mi>x</mi><mo>=</mo><mn>1</mn></mrow></math>"#;
+            let mut builder = BlockBuilder::new(BlockType::MathML);
+            builder
+                .set_mathml_element(mathml_content)
+                .set_caption("Simple equation");
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::MathML {
+                    element_str,
+                    fallback_image,
+                    caption,
+                    footnotes,
+                } => {
+                    assert_eq!(element_str, mathml_content);
+                    assert!(fallback_image.is_none());
+                    assert_eq!(caption, Some("Simple equation".to_string()));
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_create_mathml_block_with_fallback() {
+            let img_path = PathBuf::from("./test_case/image.jpg");
+            let mathml_content = r#"<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><mi>x</mi></mrow></math>"#;
+
+            let mut builder = BlockBuilder::new(BlockType::MathML);
+            builder
+                .set_mathml_element(mathml_content)
+                .set_fallback_image(img_path.clone())
+                .unwrap();
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::MathML { element_str, fallback_image, .. } => {
+                    assert_eq!(element_str, mathml_content);
+                    assert!(fallback_image.is_some());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_footnote_management() {
+            let mut builder = BlockBuilder::new(BlockType::Text);
+            builder.set_content("This is a test");
+
+            let note1 = Footnote {
+                locate: 5,
+                content: "First footnote".to_string(),
+            };
+            let note2 = Footnote {
+                locate: 10,
+                content: "Second footnote".to_string(),
+            };
+
+            builder.add_footnote(note1).add_footnote(note2);
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Text { footnotes, .. } => {
+                    assert_eq!(footnotes.len(), 2);
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_remove_last_footnote() {
+            let mut builder = BlockBuilder::new(BlockType::Text);
+            builder.set_content("This is a test");
+
+            builder.add_footnote(Footnote { locate: 5, content: "Note 1".to_string() });
+            builder.add_footnote(Footnote {
+                locate: 10,
+                content: "Note 2".to_string(),
+            });
+            builder.remove_last_footnote();
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Text { footnotes, .. } => {
+                    assert_eq!(footnotes.len(), 1);
+                    assert!(footnotes[0].content == "Note 1");
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_clear_footnotes() {
+            let mut builder = BlockBuilder::new(BlockType::Text);
+            builder.set_content("This is a test");
+
+            builder.add_footnote(Footnote { locate: 5, content: "Note".to_string() });
+
+            builder.clear_footnotes();
+
+            let block = builder.build();
+            assert!(block.is_ok());
+
+            let block = block.unwrap();
+            match block {
+                Block::Text { footnotes, .. } => {
+                    assert!(footnotes.is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[test]
+        fn test_invalid_footnote_locate() {
+            let mut builder = BlockBuilder::new(BlockType::Text);
+            builder.set_content("Hello");
+
+            // Footnote locate exceeds content length
+            builder.add_footnote(Footnote {
+                locate: 100,
+                content: "Invalid footnote".to_string(),
+            });
+
+            let result = builder.build();
+            assert!(result.is_err());
+
+            let result = result.unwrap_err();
+            assert_eq!(
+                result,
+                EpubBuilderError::InvalidFootnoteLocate { max_locate: 5 }.into()
+            );
+        }
+
+        #[test]
+        fn test_footnote_on_media_without_caption() {
+            let img_path = PathBuf::from("./test_case/image.jpg");
+            let mut builder = BlockBuilder::new(BlockType::Image);
+            builder.set_url(&img_path).unwrap();
+
+            builder.add_footnote(Footnote { locate: 1, content: "Note".to_string() });
+
+            let result = builder.build();
+            assert!(result.is_err());
+
+            let result = result.unwrap_err();
+            assert_eq!(
+                result,
+                EpubBuilderError::InvalidFootnoteLocate { max_locate: 0 }.into()
+            );
+        }
+    }
+
+    mod content_builder_tests {
+        use std::{env, fs, path::PathBuf};
+
+        use crate::{
+            builder::content::{Block, ContentBuilder},
+            types::Footnote,
+            utils::local_time,
+        };
+
+        #[test]
+        fn test_create_content_builder() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let builder = builder.unwrap();
+            assert_eq!(builder.id, "chapter1");
+        }
+
+        #[test]
+        fn test_set_title() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            builder.set_title("My Chapter").set_title("Another Title");
+
+            assert_eq!(builder.title, "Another Title");
+        }
+
+        #[test]
+        fn test_add_text_block() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_text_block("This is a paragraph", vec![]);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_add_quote_block() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_quote_block("A quoted text", vec![]);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_add_title_block() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_title_block("Section Title", 2, vec![]);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_add_image_block() {
+            let img_path = PathBuf::from("./test_case/image.jpg");
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_image_block(
+                img_path,
+                Some("Alt text".to_string()),
+                Some("Figure 1: An image".to_string()),
+                vec![],
+            );
+
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_add_audio_block() {
+            let audio_path = PathBuf::from("./test_case/audio.mp3");
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_audio_block(
+                audio_path,
+                "Your browser doesn't support audio".to_string(),
+                Some("Background music".to_string()),
+                vec![],
+            );
+
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_add_video_block() {
+            let video_path = PathBuf::from("./test_case/video.mp4");
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_video_block(
+                video_path,
+                "Your browser doesn't support video".to_string(),
+                Some("Tutorial video".to_string()),
+                vec![],
+            );
+
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_add_mathml_block() {
+            let mathml = r#"<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><mi>x</mi></mrow></math>"#;
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_mathml_block(
+                mathml.to_string(),
+                None,
+                Some("Equation 1".to_string()),
+                vec![],
+            );
+
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_remove_last_block() {
+            let mut builder = ContentBuilder::new("chapter1", "en").unwrap();
+
+            builder.add_text_block("First block", vec![]).unwrap();
+            builder.add_text_block("Second block", vec![]).unwrap();
+            assert_eq!(builder.blocks.len(), 2);
+
+            builder.remove_last_block();
+            assert_eq!(builder.blocks.len(), 1);
+        }
+
+        #[test]
+        fn test_take_last_block() {
+            let mut builder = ContentBuilder::new("chapter1", "en").unwrap();
+
+            builder.add_text_block("Block content", vec![]).unwrap();
+
+            let block = builder.take_last_block();
+            assert!(block.is_some());
+
+            let block = block.unwrap();
+            match block {
+                Block::Text { content, .. } => {
+                    assert_eq!(content, "Block content");
+                }
+                _ => unreachable!(),
+            }
+
+            let block2 = builder.take_last_block();
+            assert!(block2.is_none());
+        }
+
+        #[test]
+        fn test_clear_blocks() {
+            let mut builder = ContentBuilder::new("chapter1", "en").unwrap();
+
+            builder.add_text_block("Block 1", vec![]).unwrap();
+            builder.add_text_block("Block 2", vec![]).unwrap();
+            assert_eq!(builder.blocks.len(), 2);
+
+            builder.clear_blocks();
+
+            let block = builder.take_last_block();
+            assert!(block.is_none());
+        }
+
+        #[test]
+        fn test_make_content_document() {
+            let temp_dir = env::temp_dir().join(local_time());
+            assert!(fs::create_dir_all(&temp_dir).is_ok());
+
+            let output_path = temp_dir.join("chapter.xhtml");
+
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            builder
+                .set_title("My Chapter")
+                .add_text_block("This is the first paragraph.", vec![])
+                .unwrap()
+                .add_text_block("This is the second paragraph.", vec![])
+                .unwrap();
+
+            let result = builder.make(&output_path);
+            assert!(result.is_ok());
+            assert!(output_path.exists());
+            assert!(fs::remove_dir_all(temp_dir).is_ok());
+        }
+
+        #[test]
+        fn test_make_content_with_media() {
+            let temp_dir = env::temp_dir().join(local_time());
+            assert!(fs::create_dir_all(&temp_dir).is_ok());
+
+            let output_path = temp_dir.join("chapter.xhtml");
+            let img_path = PathBuf::from("./test_case/image.jpg");
+
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            builder
+                .set_title("Chapter with Media")
+                .add_text_block("See image below:", vec![])
+                .unwrap()
+                .add_image_block(
+                    img_path,
+                    Some("Test".to_string()),
+                    Some("Figure 1".to_string()),
+                    vec![],
+                )
+                .unwrap();
+
+            let result = builder.make(&output_path);
+            assert!(result.is_ok());
+
+            let img_dir = temp_dir.join("img");
+            assert!(img_dir.exists());
+            assert!(fs::remove_dir_all(&temp_dir).is_ok());
+        }
+
+        #[test]
+        fn test_make_content_with_footnotes() {
+            let temp_dir = env::temp_dir().join(local_time());
+            assert!(fs::create_dir_all(&temp_dir).is_ok());
+
+            let output_path = temp_dir.join("chapter.xhtml");
+
+            let footnotes = vec![
+                Footnote {
+                    locate: 10,
+                    content: "This is a footnote".to_string(),
+                },
+                Footnote {
+                    locate: 15,
+                    content: "Another footnote".to_string(),
+                },
+            ];
+
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            builder
+                .set_title("Chapter with Notes")
+                .add_text_block("This is a paragraph with notes.", footnotes)
+                .unwrap();
+
+            let result = builder.make(&output_path);
+            assert!(result.is_ok());
+            assert!(output_path.exists());
+            assert!(fs::remove_dir_all(&temp_dir).is_ok());
+        }
+    }
+
+    mod block_tests {
+        use std::path::PathBuf;
+
+        use crate::{builder::content::Block, types::Footnote};
+
+        #[test]
+        fn test_take_footnotes_from_text_block() {
+            let footnotes = vec![Footnote { locate: 5, content: "Note".to_string() }];
+
+            let block = Block::Text {
+                content: "Hello world".to_string(),
+                footnotes: footnotes.clone(),
+            };
+
+            let taken = block.take_footnotes();
+            assert_eq!(taken.len(), 1);
+            assert_eq!(taken[0].content, "Note");
+        }
+
+        #[test]
+        fn test_take_footnotes_from_quote_block() {
+            let footnotes = vec![
+                Footnote { locate: 3, content: "First".to_string() },
+                Footnote { locate: 8, content: "Second".to_string() },
+            ];
+
+            let block = Block::Quote {
+                content: "Test quote".to_string(),
+                footnotes: footnotes.clone(),
+            };
+
+            let taken = block.take_footnotes();
+            assert_eq!(taken.len(), 2);
+        }
+
+        #[test]
+        fn test_take_footnotes_from_image_block() {
+            let img_path = PathBuf::from("test.png");
+            let footnotes = vec![Footnote {
+                locate: 2,
+                content: "Image note".to_string(),
+            }];
+
+            let block = Block::Image {
+                url: img_path,
+                alt: None,
+                caption: Some("A caption".to_string()),
+                footnotes: footnotes.clone(),
+            };
+
+            let taken = block.take_footnotes();
+            assert_eq!(taken.len(), 1);
+        }
+
+        #[test]
+        fn test_block_with_empty_footnotes() {
+            let block = Block::Text {
+                content: "No footnotes here".to_string(),
+                footnotes: vec![],
+            };
+
+            let taken = block.take_footnotes();
+            assert!(taken.is_empty());
+        }
+    }
+
+    mod content_rendering_tests {
+        use crate::builder::content::Block;
+
+        #[test]
+        fn test_split_content_by_index_empty() {
+            let result = Block::split_content_by_index("Hello", &[]);
+            assert_eq!(result, vec!["Hello"]);
+        }
+
+        #[test]
+        fn test_split_content_by_single_index() {
+            let result = Block::split_content_by_index("Hello World", &[5]);
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], "Hello");
+            assert_eq!(result[1], " World");
+        }
+
+        #[test]
+        fn test_split_content_by_multiple_indices() {
+            let result = Block::split_content_by_index("One Two Three", &[3, 7]);
+            assert_eq!(result.len(), 3);
+            assert_eq!(result[0], "One");
+            assert_eq!(result[1], " Two");
+            assert_eq!(result[2], " Three");
+        }
+
+        #[test]
+        fn test_split_content_unicode() {
+            let content = "你好世界";
+            let result = Block::split_content_by_index(content, &[2]);
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], "你好");
+            assert_eq!(result[1], "世界");
+        }
     }
 }

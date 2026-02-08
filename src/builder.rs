@@ -1,4 +1,4 @@
-//! Epub Builder
+//! EPUB build functionality
 //!
 //! This module provides functionality for creating and building EPUB eBook files.
 //! The `EpubBuilder` structure implements the build logic of the EPUB 3.0 specification,
@@ -2269,5 +2269,297 @@ mod tests {
         );
         assert_eq!(refine_mime_type("text/plain", "css"), "text/css");
         assert_eq!(refine_mime_type("text/plain", "unknown"), "text/plain");
+    }
+
+    #[cfg(feature = "content_builder")]
+    mod make_contents_tests {
+        use std::path::PathBuf;
+
+        use crate::builder::{EpubBuilder, EpubVersion3, content::ContentBuilder};
+
+        #[test]
+        fn test_make_contents_basic() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content_builder = ContentBuilder::new("chapter1", "en").unwrap();
+            content_builder
+                .set_title("Test Chapter")
+                .add_text_block("This is a test paragraph.", vec![])
+                .unwrap();
+
+            builder.add_content("OEBPS/chapter1.xhtml", content_builder);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/chapter1.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_contents_multiple_blocks() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content_builder = ContentBuilder::new("chapter2", "zh-CN").unwrap();
+            content_builder
+                .set_title("多个区块章节")
+                .add_text_block("第一段文本。", vec![])
+                .unwrap()
+                .add_quote_block("这是一个引用。", vec![])
+                .unwrap()
+                .add_title_block("子标题", 2, vec![])
+                .unwrap()
+                .add_text_block("最后的文本段落。", vec![])
+                .unwrap();
+
+            builder.add_content("OEBPS/chapter2.xhtml", content_builder);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/chapter2.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_contents_with_media() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let img_path = PathBuf::from("./test_case/image.jpg");
+
+            let mut content_builder = ContentBuilder::new("chapter3", "en").unwrap();
+            content_builder
+                .set_title("Chapter with Media")
+                .add_text_block("Text before image.", vec![])
+                .unwrap()
+                .add_image_block(
+                    img_path,
+                    Some("Test Image".to_string()),
+                    Some("Figure 1: A test image".to_string()),
+                    vec![],
+                )
+                .unwrap()
+                .add_text_block("Text after image.", vec![])
+                .unwrap();
+
+            builder.add_content("OEBPS/chapter3.xhtml", content_builder);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/chapter3.xhtml").exists());
+            assert!(builder.temp_dir.join("OEBPS/img").exists());
+            assert!(builder.temp_dir.join("OEBPS/img/image.jpg").exists());
+        }
+
+        #[test]
+        fn test_make_contents_multiple_documents() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content = ContentBuilder::new("ch1", "en").unwrap();
+            content
+                .set_title("Chapter 1")
+                .add_text_block("Content of chapter 1", vec![])
+                .unwrap();
+            builder.add_content("OEBPS/chapter1.xhtml", content);
+
+            let mut content = ContentBuilder::new("ch2", "en").unwrap();
+            content
+                .set_title("Chapter 2")
+                .add_text_block("Content of chapter 2", vec![])
+                .unwrap();
+            builder.add_content("OEBPS/chapter2.xhtml", content);
+
+            let mut content = ContentBuilder::new("ch3", "en").unwrap();
+            content
+                .set_title("Chapter 3")
+                .add_text_block("Content of chapter 3", vec![])
+                .unwrap();
+            builder.add_content("OEBPS/chapter3.xhtml", content);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/chapter1.xhtml").exists());
+            assert!(builder.temp_dir.join("OEBPS/chapter2.xhtml").exists());
+            assert!(builder.temp_dir.join("OEBPS/chapter3.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_contents_different_languages() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content = ContentBuilder::new("en_ch", "en").unwrap();
+            content
+                .set_title("English Chapter")
+                .add_text_block("English text.", vec![])
+                .unwrap();
+            builder.add_content("OEBPS/en_chapter.xhtml", content);
+
+            let mut content = ContentBuilder::new("zh_ch", "zh-CN").unwrap();
+            content
+                .set_title("中文章节")
+                .add_text_block("中文文本。", vec![])
+                .unwrap();
+            builder.add_content("OEBPS/zh_chapter.xhtml", content);
+
+            let mut content = ContentBuilder::new("ja_ch", "ja").unwrap();
+            content
+                .set_title("日本語の章")
+                .add_text_block("日本語のテキスト。", vec![])
+                .unwrap();
+            builder.add_content("OEBPS/ja_chapter.xhtml", content);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/en_chapter.xhtml").exists());
+            assert!(builder.temp_dir.join("OEBPS/zh_chapter.xhtml").exists());
+            assert!(builder.temp_dir.join("OEBPS/ja_chapter.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_contents_unique_identifiers() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content = ContentBuilder::new("unique_id_1", "en").unwrap();
+            content.add_text_block("First content", vec![]).unwrap();
+            builder.add_content("OEBPS/ch1.xhtml", content);
+
+            let mut content = ContentBuilder::new("unique_id_2", "en").unwrap();
+            content.add_text_block("Second content", vec![]).unwrap();
+            builder.add_content("OEBPS/ch2.xhtml", content);
+
+            let mut content = ContentBuilder::new("unique_id_1", "en").unwrap();
+            content
+                .add_text_block("Duplicate ID content", vec![])
+                .unwrap();
+            builder.add_content("OEBPS/ch3.xhtml", content);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/ch1.xhtml").exists()); // recovered by ch3
+            assert!(builder.temp_dir.join("OEBPS/ch2.xhtml").exists());
+            assert!(builder.temp_dir.join("OEBPS/ch3.xhtml").exists());
+
+            let manifest = builder.manifest.get("unique_id_1");
+            assert!(manifest.is_some());
+
+            let manifest = manifest.unwrap();
+            assert_eq!(manifest.path, PathBuf::from("/OEBPS/ch3.xhtml"));
+        }
+
+        #[test]
+        fn test_make_contents_complex_structure() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content = ContentBuilder::new("complex_ch", "en").unwrap();
+            content
+                .set_title("Complex Chapter")
+                .add_title_block("Section 1", 2, vec![])
+                .unwrap()
+                .add_text_block("Introduction text.", vec![])
+                .unwrap()
+                .add_quote_block("A wise quote here.", vec![])
+                .unwrap()
+                .add_title_block("Section 2", 2, vec![])
+                .unwrap()
+                .add_text_block("More content with multiple paragraphs.", vec![])
+                .unwrap()
+                .add_text_block("Another paragraph.", vec![])
+                .unwrap()
+                .add_title_block("Section 3", 2, vec![])
+                .unwrap()
+                .add_quote_block("Another quotation.", vec![])
+                .unwrap();
+
+            builder.add_content("OEBPS/complex_chapter.xhtml", content);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(
+                builder
+                    .temp_dir
+                    .join("OEBPS/complex_chapter.xhtml")
+                    .exists()
+            );
+        }
+
+        #[test]
+        fn test_make_contents_empty_document() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let content = ContentBuilder::new("empty_ch", "en").unwrap();
+            builder.add_content("OEBPS/empty.xhtml", content);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/empty.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_contents_path_normalization() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("OEBPS/content.opf").unwrap();
+
+            let mut content = ContentBuilder::new("path_test", "en").unwrap();
+            content.add_text_block("Path test content", vec![]).unwrap();
+
+            builder.add_content("/OEBPS/text/chapter.xhtml", content);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/text/chapter.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_contents_remove_and_readd() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content = ContentBuilder::new("ch1", "en").unwrap();
+            content.add_text_block("First content", vec![]).unwrap();
+            builder.add_content("OEBPS/ch1.xhtml", content);
+
+            let mut content = ContentBuilder::new("ch2", "en").unwrap();
+            content.add_text_block("Second content", vec![]).unwrap();
+            builder.add_content("OEBPS/ch2.xhtml", content);
+
+            builder.remove_last_content();
+
+            let taken = builder.take_last_content();
+            assert!(taken.is_some());
+            assert_eq!(taken.as_ref().unwrap().0, PathBuf::from("OEBPS/ch1.xhtml"));
+
+            let mut content = ContentBuilder::new("ch3", "en").unwrap();
+            content.add_text_block("Third content", vec![]).unwrap();
+            builder.add_content("OEBPS/ch3.xhtml", content);
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(builder.temp_dir.join("OEBPS/ch3.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_contents_clear_all() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+            builder.add_rootfile("content.opf").unwrap();
+
+            let mut content = ContentBuilder::new("ch1", "en").unwrap();
+            content.add_text_block("Content 1", vec![]).unwrap();
+            builder.add_content("OEBPS/ch1.xhtml", content);
+
+            let mut content = ContentBuilder::new("ch2", "en").unwrap();
+            content.add_text_block("Content 2", vec![]).unwrap();
+            builder.add_content("OEBPS/ch2.xhtml", content);
+
+            builder.clear_contents();
+
+            let result = builder.make_contents();
+            assert!(result.is_ok());
+            assert!(!builder.temp_dir.join("OEBPS/ch1.xhtml").exists());
+            assert!(!builder.temp_dir.join("OEBPS/ch2.xhtml").exists());
+        }
     }
 }

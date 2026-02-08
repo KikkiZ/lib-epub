@@ -17,7 +17,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-lib-epub = "0.0.5"
+lib-epub = "0.1.0"
 ```
 
 ## Quick Start
@@ -77,13 +77,34 @@ fn main() -> Result<(), EpubError> {
 }
 ```
 
-## Enable features
+Building an content document:
 
-Enable the builder feature in `Cargo.toml`:
+```rust
+use lib_epub::{
+    builder::content::{Block, BlockBuilder, ContentBuilder},
+    types::{BlockType, Footnote},
+};
 
-```toml
-[dependencies]
-lib-epub = { version = "0.0.5", features = ["builder"] }
+fn main() -> Result<(), lib_epub::error::EpubError> {
+    let mut block_builder = BlockBuilder::new(BlockType::Title);
+    block_builder
+        .set_content("This is a title")
+        .add_footnote(Footnote {
+            locate: 15,
+            content: "This is a footnote.".to_string(),
+        });
+
+    let block = block_builder.build()?;
+
+    let mut builder = ContentBuilder::new("chapter1", "zh-CN")?;
+    builder.set_title("My Chapter")
+        .add_block(block)?
+        .add_text_block("This is my first chapter.", vec![])?;
+
+    let _ = builder.make("output.xhtml")?;
+
+    Ok(())
+}
 ```
 
 ## MSRV
