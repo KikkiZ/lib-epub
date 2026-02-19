@@ -772,14 +772,17 @@ impl PartialEq for NavPoint {
     }
 }
 
-/// Represents a footnote in an content document
+/// Represents a footnote in an EPUB content document
 ///
 /// This structure represents a footnote in an EPUB content document.
 /// It contains the location within the content document and the content of the footnote.
 #[cfg(feature = "content_builder")]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Footnote {
+    /// The position/location of the footnote reference in the content
     pub locate: usize,
+
+    /// The text content of the footnote
     pub content: String,
 }
 
@@ -799,14 +802,234 @@ impl PartialOrd for Footnote {
 
 /// Represents the type of a block element in the content document
 #[cfg(feature = "content_builder")]
+#[derive(Debug)]
 pub enum BlockType {
+    /// A text paragraph block
+    ///
+    /// Standard paragraph content with text styling applied.
     Text,
+
+    /// A quotation block
+    ///
+    /// Represents quoted or indented text content, typically rendered
+    /// with visual distinction from regular paragraphs.
     Quote,
+
+    /// A title or heading block
+    ///
+    /// Represents chapter or section titles with appropriate heading styling.
     Title,
+
+    /// An image block
+    ///
+    /// Contains embedded image content with optional caption support.
     Image,
+
+    /// An audio block
+    ///
+    /// Contains audio content for playback within the document.
     Audio,
+
+    /// A video block
+    ///
+    /// Contains video content for playback within the document.
     Video,
+
+    /// A MathML block
+    ///
+    /// Contains mathematical notation using MathML markup for
+    /// proper mathematical typesetting.
     MathML,
+}
+
+/// Configuration options for document styling
+///
+/// This struct aggregates all style-related configuration for an EPUB document,
+/// including text appearance, color scheme, and page layout settings.
+#[derive(Debug, Default)]
+pub struct StyleOptions {
+    /// Text styling configuration
+    pub text: TextStyle,
+
+    /// Color scheme configuration
+    ///
+    /// Defines the background, text, and link colors for the document.
+    pub color_scheme: ColorScheme,
+
+    /// Page layout configuration
+    ///
+    /// Controls margins, text alignment, and paragraph spacing.
+    pub layout: PageLayout,
+}
+
+/// Text styling configuration
+///
+/// Defines the visual appearance of text content in the document,
+/// including font properties, sizing, and spacing.
+#[derive(Debug)]
+pub struct TextStyle {
+    /// The base font size (default: 1.0, unit: rem)
+    ///
+    /// Relative to the root element, providing consistent sizing
+    /// across different viewing contexts.
+    pub font_size: f32,
+
+    /// The line height (default: 1.6, unit: em)
+    ///
+    /// Controls the vertical spacing between lines of text.
+    /// Values greater than 1.0 increase spacing, while values
+    /// less than 1.0 compress the text.
+    pub line_height: f32,
+
+    /// The font family stack (default: "-apple-system, Roboto, sans-serif")
+    ///
+    /// A comma-separated list of font families to use, with
+    /// fallback fonts specified for compatibility.
+    pub font_family: String,
+
+    /// The font weight (default: "normal")
+    ///
+    /// Controls the thickness of the font strokes. Common values
+    /// include "normal" and "bold".
+    pub font_weight: String,
+
+    /// The font style (default: "normal")
+    ///
+    /// Controls whether the font is normal, italic, or oblique.
+    /// Common values include "normal" and "italic".
+    pub font_style: String,
+
+    /// The letter spacing (default: "normal")
+    ///
+    /// Controls the space between characters. Common values
+    /// include "normal" or specific lengths like "0.05em".
+    pub letter_spacing: String,
+
+    /// The text indent for paragraphs (default: 2.0, unit: em)
+    ///
+    /// Controls the indentation of the first line of paragraphs.
+    /// A value of 2.0 means the first line is indented by 2 ems.
+    pub text_indent: f32,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            font_size: 1.0,
+            line_height: 1.6,
+            font_family: "-apple-system, Roboto, sans-serif".to_string(),
+            font_weight: "normal".to_string(),
+            font_style: "normal".to_string(),
+            letter_spacing: "normal".to_string(),
+            text_indent: 2.0,
+        }
+    }
+}
+
+/// Color scheme configuration
+///
+/// Defines the color palette for the document, including background,
+/// text, and link colors.
+#[derive(Debug)]
+pub struct ColorScheme {
+    /// The background color (default: "#FFFFFF")
+    ///
+    /// The fill color for the document body. Specified as a hex color
+    /// string (e.g., "#FFFFFF" for white).
+    pub background: String,
+
+    /// The text color (default: "#000000")
+    ///
+    /// The primary color for text content. Specified as a hex color
+    /// string (e.g., "#000000" for black).
+    pub text: String,
+
+    /// The link color (default: "#6f6f6f")
+    ///
+    /// The color for hyperlinks in the document. Specified as a hex
+    /// color string (e.g., "#6f6f6f" for gray).
+    pub link: String,
+}
+
+impl Default for ColorScheme {
+    fn default() -> Self {
+        Self {
+            background: "#FFFFFF".to_string(),
+            text: "#000000".to_string(),
+            link: "#6f6f6f".to_string(),
+        }
+    }
+}
+
+/// Page layout configuration
+///
+/// Defines the layout properties for pages in the document, including
+/// margins, text alignment, and paragraph spacing.
+#[derive(Debug)]
+pub struct PageLayout {
+    /// The page margin (default: 20, unit: pixels)
+    ///
+    /// Controls the space around the content area on each page.
+    pub margin: usize,
+
+    /// The text alignment mode (default: TextAlign::Left)
+    ///
+    /// Controls how text is aligned within the content area.
+    pub text_align: TextAlign,
+
+    /// The spacing between paragraphs (default: 16, unit: pixels)
+    ///
+    /// Controls the vertical space between block-level elements.
+    pub paragraph_spacing: usize,
+}
+
+impl Default for PageLayout {
+    fn default() -> Self {
+        Self {
+            margin: 20,
+            text_align: Default::default(),
+            paragraph_spacing: 16,
+        }
+    }
+}
+
+/// Text alignment options
+///
+/// Defines the available text alignment modes for content in the document.
+#[derive(Debug, Default, PartialEq)]
+pub enum TextAlign {
+    /// Left-aligned text
+    ///
+    /// Text is aligned to the left margin, with the right edge ragged.
+    #[default]
+    Left,
+
+    /// Right-aligned text
+    ///
+    /// Text is aligned to the right margin, with the left edge ragged.
+    Right,
+
+    /// Justified text
+    ///
+    /// Text is aligned to both margins by adjusting the spacing between
+    /// words. The left and right edges are both straight.
+    Justify,
+
+    /// Centered text
+    ///
+    /// Text is centered within the content area, with both edges ragged.
+    Center,
+}
+
+impl std::fmt::Display for TextAlign {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TextAlign::Left => write!(f, "left"),
+            TextAlign::Right => write!(f, "right"),
+            TextAlign::Justify => write!(f, "justify"),
+            TextAlign::Center => write!(f, "center"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1681,6 +1904,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "content_builder")]
     mod footnote_tests {
         use crate::types::Footnote;
 
@@ -1772,6 +1996,231 @@ mod tests {
             assert_eq!(footnotes[0].content, "First note");
             assert_eq!(footnotes[1].content, "Second note");
             assert_eq!(footnotes[2].content, "Third note");
+        }
+    }
+
+    #[cfg(feature = "content_builder")]
+    mod block_type_tests {
+        use crate::types::BlockType;
+
+        #[test]
+        fn test_block_type_variants() {
+            let _ = BlockType::Text;
+            let _ = BlockType::Quote;
+            let _ = BlockType::Title;
+            let _ = BlockType::Image;
+            let _ = BlockType::Audio;
+            let _ = BlockType::Video;
+            let _ = BlockType::MathML;
+        }
+
+        #[test]
+        fn test_block_type_debug() {
+            let text = format!("{:?}", BlockType::Text);
+            assert_eq!(text, "Text");
+
+            let quote = format!("{:?}", BlockType::Quote);
+            assert_eq!(quote, "Quote");
+
+            let image = format!("{:?}", BlockType::Image);
+            assert_eq!(image, "Image");
+        }
+    }
+
+    mod style_options_tests {
+        use crate::types::{ColorScheme, PageLayout, StyleOptions, TextAlign, TextStyle};
+
+        #[test]
+        fn test_style_options_default() {
+            let options = StyleOptions::default();
+
+            assert_eq!(options.text.font_size, 1.0);
+            assert_eq!(options.text.line_height, 1.6);
+            assert_eq!(
+                options.text.font_family,
+                "-apple-system, Roboto, sans-serif"
+            );
+            assert_eq!(options.text.font_weight, "normal");
+            assert_eq!(options.text.font_style, "normal");
+            assert_eq!(options.text.letter_spacing, "normal");
+            assert_eq!(options.text.text_indent, 2.0);
+
+            assert_eq!(options.color_scheme.background, "#FFFFFF");
+            assert_eq!(options.color_scheme.text, "#000000");
+            assert_eq!(options.color_scheme.link, "#6f6f6f");
+
+            assert_eq!(options.layout.margin, 20);
+            assert_eq!(options.layout.text_align, TextAlign::Left);
+            assert_eq!(options.layout.paragraph_spacing, 16);
+        }
+
+        #[test]
+        fn test_style_options_custom_values() {
+            let text = TextStyle {
+                font_size: 1.5,
+                line_height: 2.0,
+                font_family: "Georgia, serif".to_string(),
+                font_weight: "bold".to_string(),
+                font_style: "italic".to_string(),
+                letter_spacing: "0.1em".to_string(),
+                text_indent: 3.0,
+            };
+
+            let color_scheme = ColorScheme {
+                background: "#F0F0F0".to_string(),
+                text: "#333333".to_string(),
+                link: "#0066CC".to_string(),
+            };
+
+            let layout = PageLayout {
+                margin: 30,
+                text_align: TextAlign::Center,
+                paragraph_spacing: 20,
+            };
+
+            let options = StyleOptions { text, color_scheme, layout };
+
+            assert_eq!(options.text.font_size, 1.5);
+            assert_eq!(options.text.font_weight, "bold");
+            assert_eq!(options.color_scheme.background, "#F0F0F0");
+            assert_eq!(options.layout.text_align, TextAlign::Center);
+        }
+
+        #[test]
+        fn test_text_style_default() {
+            let style = TextStyle::default();
+
+            assert_eq!(style.font_size, 1.0);
+            assert_eq!(style.line_height, 1.6);
+            assert_eq!(style.font_family, "-apple-system, Roboto, sans-serif");
+            assert_eq!(style.font_weight, "normal");
+            assert_eq!(style.font_style, "normal");
+            assert_eq!(style.letter_spacing, "normal");
+            assert_eq!(style.text_indent, 2.0);
+        }
+
+        #[test]
+        fn test_text_style_custom_values() {
+            let style = TextStyle {
+                font_size: 2.0,
+                line_height: 1.8,
+                font_family: "Times New Roman".to_string(),
+                font_weight: "bold".to_string(),
+                font_style: "italic".to_string(),
+                letter_spacing: "0.05em".to_string(),
+                text_indent: 0.0,
+            };
+
+            assert_eq!(style.font_size, 2.0);
+            assert_eq!(style.line_height, 1.8);
+            assert_eq!(style.font_family, "Times New Roman");
+            assert_eq!(style.font_weight, "bold");
+            assert_eq!(style.font_style, "italic");
+            assert_eq!(style.letter_spacing, "0.05em");
+            assert_eq!(style.text_indent, 0.0);
+        }
+
+        #[test]
+        fn test_text_style_debug() {
+            let style = TextStyle::default();
+            let debug_str = format!("{:?}", style);
+            assert!(debug_str.contains("TextStyle"));
+            assert!(debug_str.contains("font_size"));
+        }
+
+        #[test]
+        fn test_color_scheme_default() {
+            let scheme = ColorScheme::default();
+
+            assert_eq!(scheme.background, "#FFFFFF");
+            assert_eq!(scheme.text, "#000000");
+            assert_eq!(scheme.link, "#6f6f6f");
+        }
+
+        #[test]
+        fn test_color_scheme_custom_values() {
+            let scheme = ColorScheme {
+                background: "#000000".to_string(),
+                text: "#FFFFFF".to_string(),
+                link: "#00FF00".to_string(),
+            };
+
+            assert_eq!(scheme.background, "#000000");
+            assert_eq!(scheme.text, "#FFFFFF");
+            assert_eq!(scheme.link, "#00FF00");
+        }
+
+        #[test]
+        fn test_color_scheme_debug() {
+            let scheme = ColorScheme::default();
+            let debug_str = format!("{:?}", scheme);
+            assert!(debug_str.contains("ColorScheme"));
+            assert!(debug_str.contains("background"));
+        }
+
+        #[test]
+        fn test_page_layout_default() {
+            let layout = PageLayout::default();
+
+            assert_eq!(layout.margin, 20);
+            assert_eq!(layout.text_align, TextAlign::Left);
+            assert_eq!(layout.paragraph_spacing, 16);
+        }
+
+        #[test]
+        fn test_page_layout_custom_values() {
+            let layout = PageLayout {
+                margin: 40,
+                text_align: TextAlign::Justify,
+                paragraph_spacing: 24,
+            };
+
+            assert_eq!(layout.margin, 40);
+            assert_eq!(layout.text_align, TextAlign::Justify);
+            assert_eq!(layout.paragraph_spacing, 24);
+        }
+
+        #[test]
+        fn test_page_layout_debug() {
+            let layout = PageLayout::default();
+            let debug_str = format!("{:?}", layout);
+            assert!(debug_str.contains("PageLayout"));
+            assert!(debug_str.contains("margin"));
+        }
+
+        #[test]
+        fn test_text_align_default() {
+            let align = TextAlign::default();
+            assert_eq!(align, TextAlign::Left);
+        }
+
+        #[test]
+        fn test_text_align_display() {
+            assert_eq!(TextAlign::Left.to_string(), "left");
+            assert_eq!(TextAlign::Right.to_string(), "right");
+            assert_eq!(TextAlign::Justify.to_string(), "justify");
+            assert_eq!(TextAlign::Center.to_string(), "center");
+        }
+
+        #[test]
+        fn test_text_align_all_variants() {
+            let left = TextAlign::Left;
+            let right = TextAlign::Right;
+            let justify = TextAlign::Justify;
+            let center = TextAlign::Center;
+
+            assert!(matches!(left, TextAlign::Left));
+            assert!(matches!(right, TextAlign::Right));
+            assert!(matches!(justify, TextAlign::Justify));
+            assert!(matches!(center, TextAlign::Center));
+        }
+
+        #[test]
+        fn test_text_align_debug() {
+            assert_eq!(format!("{:?}", TextAlign::Left), "Left");
+            assert_eq!(format!("{:?}", TextAlign::Right), "Right");
+            assert_eq!(format!("{:?}", TextAlign::Justify), "Justify");
+            assert_eq!(format!("{:?}", TextAlign::Center), "Center");
         }
     }
 }

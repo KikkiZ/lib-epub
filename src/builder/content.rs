@@ -56,7 +56,7 @@ use quick_xml::{
 use crate::{
     builder::XmlWriter,
     error::{EpubBuilderError, EpubError},
-    types::{BlockType, Footnote},
+    types::{BlockType, Footnote, StyleOptions},
     utils::local_time,
 };
 
@@ -448,7 +448,7 @@ impl Block {
         Ok(())
     }
 
-    /// Make footnote markup
+    /// Makes footnote reference markup
     #[inline]
     fn make_footnotes(writer: &mut XmlWriter, index: usize) -> Result<(), EpubError> {
         writer.write_event(Event::Start(BytesStart::new("a").with_attributes([
@@ -499,7 +499,7 @@ impl Block {
 /// let mut builder = BlockBuilder::new(BlockType::Text);
 /// builder.set_content("Hello, world!").add_footnote(Footnote {
 ///     content: "This is a footnote.".to_string(),
-///     locate: 13,               
+///     locate: 13,
 /// });
 ///
 /// builder.build()?;
@@ -510,6 +510,7 @@ impl Block {
 /// ## Notes
 /// - Not all fields are required for all block types. Required fields vary by block type.
 /// - The `build()` method will validate that required fields are set for the specified block type.
+#[derive(Debug)]
 pub struct BlockBuilder {
     /// The type of block to construct
     block_type: BlockType,
@@ -940,12 +941,13 @@ pub struct ContentBuilder {
     ///
     /// This identifier is used to uniquely identify the content document within the EPUB container.
     /// If the identifier is not unique, only one content document will be included in the EPUB container;
-    /// and the other content document will be ignored.  
+    /// and the other content document will be ignored.
     pub id: String,
 
     blocks: Vec<Block>,
     language: String,
     title: String,
+    styles: StyleOptions,
 
     pub(crate) temp_dir: PathBuf,
 }
@@ -967,6 +969,7 @@ impl ContentBuilder {
             blocks: vec![],
             language: language.to_string(),
             title: String::new(),
+            styles: StyleOptions::default(),
             temp_dir,
         })
     }
@@ -979,6 +982,15 @@ impl ContentBuilder {
     /// - `title`: The title text for the document
     pub fn set_title(&mut self, title: &str) -> &mut Self {
         self.title = title.to_string();
+        self
+    }
+
+    /// Sets the styles for the document
+    ///
+    /// ## Parameters
+    /// - `styles`: The StyleOptions to set for the document
+    pub fn set_styles(&mut self, styles: StyleOptions) -> &mut Self {
+        self.styles = styles;
         self
     }
 
@@ -1299,10 +1311,14 @@ impl ContentBuilder {
         writer.write_event(Event::Start(BytesStart::new("title")))?;
         writer.write_event(Event::Text(BytesText::new(&self.title)))?;
         writer.write_event(Event::End(BytesEnd::new("title")))?;
+
+        self.make_style(&mut writer)?;
+
         writer.write_event(Event::End(BytesEnd::new("head")))?;
 
         // make body
         writer.write_event(Event::Start(BytesStart::new("body")))?;
+        writer.write_event(Event::Start(BytesStart::new("main")))?;
 
         let mut footnote_index = 1;
         let mut footnotes = Vec::new();
@@ -1312,6 +1328,8 @@ impl ContentBuilder {
             footnotes.append(&mut block.take_footnotes());
             footnote_index = footnotes.len() + 1;
         }
+
+        writer.write_event(Event::End(BytesEnd::new("main")))?;
 
         Self::make_footnotes(&mut writer, footnotes)?;
         writer.write_event(Event::End(BytesEnd::new("body")))?;
@@ -1324,20 +1342,75 @@ impl ContentBuilder {
         Ok(())
     }
 
+    /// Generates CSS styles for the document
+    fn make_style(&self, writer: &mut XmlWriter) -> Result<(), EpubError> {
+        let style = format!(
+            r#"
+            * {{
+                margin: 0;
+                padding: 0;
+                font-family: {font_family};
+                text-align: {text_align};
+                background-color: {background};
+                color: {text};
+            }}
+            body, p, div, span, li, td, th {{
+                font-size: {font_size}rem;
+                line-height: {line_height}em;
+                font-weight: {font_weight};
+                font-style: {font_style};
+                letter-spacing: {letter_spacing};
+            }}
+            body {{ margin: {margin}px; }}
+            p {{ text-indent: {text_indent}em; }}
+            a {{ color: {link_color}; text-decoration: none; }}
+            figcaption {{ text-align: center; line-height: 1em; }}
+            blockquote {{ padding: 1em 2em; }}
+            blockquote > p {{ font-style: italic; }}
+            .content-block {{ margin-bottom: {paragraph_spacing}px; }}
+            .image-block, .audio-block, .video-block {{ width: 100%; }}
+            .footnote-ref {{ font-size: 0.5em; vertical-align: super; }}
+            .footnote-list {{ list-style: none; padding: 0; }}
+            .footnote-item > p {{ text-indent: 0; }}
+            "#,
+            font_family = self.styles.text.font_family,
+            text_align = self.styles.layout.text_align,
+            background = self.styles.color_scheme.background,
+            text = self.styles.color_scheme.text,
+            font_size = self.styles.text.font_size,
+            line_height = self.styles.text.line_height,
+            font_weight = self.styles.text.font_weight,
+            font_style = self.styles.text.font_style,
+            letter_spacing = self.styles.text.letter_spacing,
+            margin = self.styles.layout.margin,
+            text_indent = self.styles.text.text_indent,
+            link_color = self.styles.color_scheme.link,
+            paragraph_spacing = self.styles.layout.paragraph_spacing,
+        );
+
+        writer.write_event(Event::Start(BytesStart::new("style")))?;
+        writer.write_event(Event::Text(BytesText::new(&style)))?;
+        writer.write_event(Event::End(BytesEnd::new("style")))?;
+
+        Ok(())
+    }
+
     /// Generates the footnotes section in the document
     ///
     /// Creates an aside element containing an unordered list of all footnotes.
     /// Each footnote is rendered as a list item with a backlink to its reference in the text.
     fn make_footnotes(writer: &mut XmlWriter, footnotes: Vec<Footnote>) -> Result<(), EpubError> {
         writer.write_event(Event::Start(BytesStart::new("aside")))?;
-        writer.write_event(Event::Start(BytesStart::new("ul")))?;
+        writer.write_event(Event::Start(
+            BytesStart::new("ul").with_attributes([("class", "footnote-list")]),
+        ))?;
 
         let mut index = 1;
         for footnote in footnotes.into_iter() {
-            writer.write_event(Event::Start(
-                BytesStart::new("li")
-                    .with_attributes([("id", format!("footnote-{}", index).as_str())]),
-            ))?;
+            writer.write_event(Event::Start(BytesStart::new("li").with_attributes([
+                ("id", format!("footnote-{}", index).as_str()),
+                ("class", "footnote-item"),
+            ])))?;
             writer.write_event(Event::Start(BytesStart::new("p")))?;
 
             writer.write_event(Event::Start(
@@ -1361,6 +1434,9 @@ impl ContentBuilder {
     }
 
     /// Automatically handles media resources
+    ///
+    /// Copies media files (images, audio, video) from their original locations
+    /// to the temporary directory for inclusion in the EPUB package.
     fn handle_resource(&mut self) -> Result<(), EpubError> {
         match self.blocks.last() {
             Some(Block::Image { url, .. }) => {
@@ -1415,6 +1491,121 @@ impl Drop for ContentBuilder {
 
 #[cfg(test)]
 mod tests {
+    // use std::{path::PathBuf, vec};
+
+    // use crate::{
+    //     builder::content::{ContentBuilder, Footnote},
+    //     error::EpubError,
+    // };
+
+    // #[test]
+    // fn test() -> Result<(), EpubError> {
+    //     let ele_string = r#"
+    //     <math xmlns="http://www.w3.org/1998/Math/MathML">
+    //       <mrow>
+    //         <munderover>
+    //           <mo>∑</mo>
+    //           <mrow>
+    //             <mi>n</mi>
+    //             <mo>=</mo>
+    //             <mn>1</mn>
+    //           </mrow>
+    //           <mrow>
+    //             <mo>+</mo>
+    //             <mn>∞</mn>
+    //           </mrow>
+    //         </munderover>
+    //         <mfrac>
+    //           <mn>1</mn>
+    //           <msup>
+    //             <mi>n</mi>
+    //             <mn>2</mn>
+    //           </msup>
+    //         </mfrac>
+    //       </mrow>
+    //     </math>"#;
+
+    //     let content = ContentBuilder::new("test", "zh-CN")?
+    //         .set_title("Test")
+    //         .add_title_block(
+    //             "This is a title",
+    //             2,
+    //             vec![
+    //                 Footnote {
+    //                     content: "This is a footnote for title.".to_string(),
+    //                     locate: 15,
+    //                 },
+    //                 Footnote {
+    //                     content: "This is another footnote for title.".to_string(),
+    //                     locate: 4,
+    //                 },
+    //             ],
+    //         )?
+    //         .add_text_block(
+    //             "This is a paragraph.",
+    //             vec![
+    //                 Footnote {
+    //                     content: "This is a footnote.".to_string(),
+    //                     locate: 4,
+    //                 },
+    //                 Footnote {
+    //                     content: "This is another footnote.".to_string(),
+    //                     locate: 20,
+    //                 },
+    //                 Footnote {
+    //                     content: "This is a third footnote.".to_string(),
+    //                     locate: 4,
+    //                 },
+    //             ],
+    //         )?
+    //         .add_image_block(
+    //             PathBuf::from("C:\\Users\\Kikki\\Desktop\\background.jpg"),
+    //             None,
+    //             Some("this is an image".to_string()),
+    //             vec![Footnote {
+    //                 content: "This is a footnote for image.".to_string(),
+    //                 locate: 16,
+    //             }],
+    //         )?
+    //         .add_quote_block(
+    //             "Quote a text.",
+    //             vec![Footnote {
+    //                 content: "This is a footnote for quote.".to_string(),
+    //                 locate: 13,
+    //             }],
+    //         )?
+    //         .add_audio_block(
+    //             PathBuf::from("C:\\Users\\Kikki\\Desktop\\audio.mp3"),
+    //             "This a fallback string".to_string(),
+    //             Some("this is an audio".to_string()),
+    //             vec![Footnote {
+    //                 content: "This is a footnote for audio.".to_string(),
+    //                 locate: 4,
+    //             }],
+    //         )?
+    //         .add_video_block(
+    //             PathBuf::from("C:\\Users\\Kikki\\Desktop\\秋日何时来2024BD1080P.mp4"),
+    //             "This a fallback string".to_string(),
+    //             Some("this a video".to_string()),
+    //             vec![Footnote {
+    //                 content: "This is a footnote for video.".to_string(),
+    //                 locate: 12,
+    //             }],
+    //         )?
+    //         .add_mathml_block(
+    //             ele_string.to_owned(),
+    //             None,
+    //             Some("this is a formula".to_string()),
+    //             vec![Footnote {
+    //                 content: "This is a footnote for formula.".to_string(),
+    //                 locate: 17,
+    //             }],
+    //         )?
+    //         .make("C:\\Users\\Kikki\\Desktop\\test.xhtml");
+    //     assert!(content.is_ok());
+    //     Ok(())
+    // }
+
     mod block_builder_tests {
         use std::path::PathBuf;
 
@@ -1582,6 +1773,64 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
+        }
+
+        #[test]
+        fn test_set_url_invalid_file_type() {
+            let xhtml_path = PathBuf::from("./test_case/Overview.xhtml");
+            let mut builder = BlockBuilder::new(BlockType::Image);
+            let result = builder.set_url(&xhtml_path);
+            assert!(result.is_err());
+
+            let err = result.unwrap_err();
+            assert_eq!(err, EpubBuilderError::NotExpectedFileFormat.into());
+        }
+
+        #[test]
+        fn test_set_url_nonexistent_file() {
+            let nonexistent_path = PathBuf::from("./test_case/nonexistent.jpg");
+            let mut builder = BlockBuilder::new(BlockType::Image);
+            let result = builder.set_url(&nonexistent_path);
+            assert!(result.is_err());
+
+            let err = result.unwrap_err();
+            assert_eq!(
+                err,
+                EpubBuilderError::TargetIsNotFile {
+                    target_path: "./test_case/nonexistent.jpg".to_string()
+                }
+                .into()
+            );
+        }
+
+        #[test]
+        fn test_set_fallback_image_invalid_type() {
+            let audio_path = PathBuf::from("./test_case/audio.mp3");
+            let mut builder = BlockBuilder::new(BlockType::MathML);
+            builder.set_mathml_element("<math/>");
+            let result = builder.set_fallback_image(audio_path);
+            assert!(result.is_err());
+
+            let err = result.unwrap_err();
+            assert_eq!(err, EpubBuilderError::NotExpectedFileFormat.into());
+        }
+
+        #[test]
+        fn test_set_fallback_image_nonexistent() {
+            let nonexistent_path = PathBuf::from("./test_case/nonexistent.png");
+            let mut builder = BlockBuilder::new(BlockType::MathML);
+            builder.set_mathml_element("<math/>");
+            let result = builder.set_fallback_image(nonexistent_path);
+            assert!(result.is_err());
+
+            let err = result.unwrap_err();
+            assert_eq!(
+                err,
+                EpubBuilderError::TargetIsNotFile {
+                    target_path: "./test_case/nonexistent.png".to_string()
+                }
+                .into()
+            );
         }
 
         #[test]
@@ -1780,7 +2029,7 @@ mod tests {
 
         use crate::{
             builder::content::{Block, ContentBuilder},
-            types::Footnote,
+            types::{ColorScheme, Footnote, PageLayout, TextAlign, TextStyle},
             utils::local_time,
         };
 
@@ -1822,6 +2071,42 @@ mod tests {
             let mut builder = builder.unwrap();
             let result = builder.add_quote_block("A quoted text", vec![]);
             assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_set_styles() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let custom_styles = crate::types::StyleOptions {
+                text: TextStyle {
+                    font_size: 1.5,
+                    line_height: 1.8,
+                    font_family: "Georgia, serif".to_string(),
+                    font_weight: "bold".to_string(),
+                    font_style: "italic".to_string(),
+                    letter_spacing: "0.1em".to_string(),
+                    text_indent: 1.5,
+                },
+                color_scheme: ColorScheme {
+                    background: "#F5F5F5".to_string(),
+                    text: "#333333".to_string(),
+                    link: "#0066CC".to_string(),
+                },
+                layout: PageLayout {
+                    margin: 30,
+                    text_align: TextAlign::Center,
+                    paragraph_spacing: 20,
+                },
+            };
+
+            let mut builder = builder.unwrap();
+            builder.set_styles(custom_styles);
+
+            assert_eq!(builder.styles.text.font_size, 1.5);
+            assert_eq!(builder.styles.text.font_weight, "bold");
+            assert_eq!(builder.styles.color_scheme.background, "#F5F5F5");
+            assert_eq!(builder.styles.layout.text_align, TextAlign::Center);
         }
 
         #[test]
