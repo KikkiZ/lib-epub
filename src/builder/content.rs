@@ -64,12 +64,32 @@ use crate::{
 ///
 /// The content block is the basic unit of content in a content document.
 /// It can be one of the following types: Text, Quote, Title, Image, Audio, Video, MathML.
+///
+/// For each type of block, we can add a footnote to it, where Text, Quote and Title's
+/// footnote will be added to the content and Image, Audio, Video and MathML's footnote
+/// will be added to the caption.
+///
+/// Each block type has its own structure and required fields. We show the structure
+/// of each block so that you can manually write css files for Content for a more
+/// beautiful interface.
+///
+/// In addition, the footnote index in the body has the following structure:
+///
+/// ```xhtml
+/// <a href="#footnote-1" id="ref-1" class="footnote-ref">[1]</a>
+/// ```
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Block {
     /// Text paragraph
     ///
-    /// This block represents a paragraph of text.
+    /// This block represents a paragraph of text. The block structure is as follows:
+    ///
+    /// ```html
+    /// <p class="content-block text-block">
+    ///     {{ text.content }}
+    /// </p>
+    /// ```
     #[non_exhaustive]
     Text {
         content: String,
@@ -78,7 +98,13 @@ pub enum Block {
 
     /// Quote paragraph
     ///
-    /// This block represents a paragraph of quoted text.
+    /// This block represents a paragraph of quoted text. The block structure is as follows:
+    ///
+    /// ```xhtml
+    /// <blockquote class="content-block quote-block">
+    ///     {{ quote.content }}
+    /// </blockquote>
+    /// ```
     #[non_exhaustive]
     Quote {
         content: String,
@@ -86,6 +112,13 @@ pub enum Block {
     },
 
     /// Heading
+    ///
+    /// The block structure is as follows:
+    /// ```xhtml
+    /// <h1 class="content-block title-block">
+    ///     {{ title.content }}
+    /// </h1>
+    /// ```
     #[non_exhaustive]
     Title {
         content: String,
@@ -98,6 +131,16 @@ pub enum Block {
     },
 
     /// Image block
+    ///
+    /// The block structure is as follows:
+    /// ```xhtml
+    /// <figure class="content-block image-block">
+    ///     <img src="{{ image.url }}" alt="{{ image.alt }}" />
+    ///     <figcaption>
+    ///         {{ image.caption }}
+    ///     </figcaption>
+    /// </figure>
+    /// ```
     #[non_exhaustive]
     Image {
         /// Image file path
@@ -113,6 +156,18 @@ pub enum Block {
     },
 
     /// Audio block
+    ///
+    /// The block structure is as follows:
+    /// ```xhtml
+    /// <figure class="content-block audio-block">
+    ///     <audio src="{{ audio.url }}" controls>
+    ///        <p>{{ audio.fallback }}</p>
+    ///    </audio>
+    ///    <figcaption>
+    ///       Audio caption text
+    ///   </figcaption>
+    /// </figure>
+    /// ```
     #[non_exhaustive]
     Audio {
         /// Audio file path
@@ -130,6 +185,18 @@ pub enum Block {
     },
 
     /// Video block
+    ///
+    /// The block structure is as follows:
+    /// ```xhtml
+    /// <figure class="content-block video-block">
+    ///     <video src="{{ video.url }}" controls>
+    ///         <p>{{ video.fallback }}</p>
+    ///     </video>
+    ///     <figcaption>
+    ///         {{ video.caption }}
+    ///     </figcaption>
+    /// </figure>
+    /// ```
     #[non_exhaustive]
     Video {
         /// Video file path
@@ -147,6 +214,16 @@ pub enum Block {
     },
 
     /// MathML block
+    ///
+    /// The block structure is as follows:
+    /// ```xhtml
+    /// <figure class="content-block mathml-block">
+    ///     {{ mathml.element_str as innerHTML }}
+    ///     <img src="{{ mathml.fallback_image }}" class="mathml-fallback" />
+    ///     <figcaption>
+    ///         {{ mathml.caption }}
+    ///     </figcaption>
+    /// </figure>
     #[non_exhaustive]
     MathML {
         /// MathML element raw data
@@ -180,7 +257,7 @@ impl Block {
         match self {
             Block::Text { content, footnotes } => {
                 writer.write_event(Event::Start(
-                    BytesStart::new("p").with_attributes([("class", "content-block")]),
+                    BytesStart::new("p").with_attributes([("class", "content-block text-block")]),
                 ))?;
 
                 Self::make_text(writer, content, footnotes, start_index)?;
@@ -191,7 +268,7 @@ impl Block {
             Block::Quote { content, footnotes } => {
                 writer.write_event(Event::Start(BytesStart::new("blockquote").with_attributes(
                     [
-                        ("class", "content-block"),
+                        ("class", "content-block quote-block"),
                         ("cite", "SOME ATTR NEED TO BE SET"),
                     ],
                 )))?;
@@ -207,7 +284,7 @@ impl Block {
                 let tag_name = format!("h{}", level);
                 writer.write_event(Event::Start(
                     BytesStart::new(tag_name.as_str())
-                        .with_attributes([("class", "content-block")]),
+                        .with_attributes([("class", "content-block title-block")]),
                 ))?;
 
                 Self::make_text(writer, content, footnotes, start_index)?;
@@ -220,13 +297,13 @@ impl Block {
 
                 let mut attr = Vec::new();
                 attr.push(("src", url.as_str()));
-                attr.push(("class", "image-block"));
                 if let Some(alt) = alt {
                     attr.push(("alt", alt.as_str()));
                 }
 
                 writer.write_event(Event::Start(
-                    BytesStart::new("figure").with_attributes([("class", "content-block")]),
+                    BytesStart::new("figure")
+                        .with_attributes([("class", "content-block image-block")]),
                 ))?;
                 writer.write_event(Event::Empty(BytesStart::new("img").with_attributes(attr)))?;
 
@@ -246,12 +323,12 @@ impl Block {
 
                 let attr = vec![
                     ("src", url.as_str()),
-                    ("class", "audio-block"),
                     ("controls", "controls"), // attribute special spelling for xhtml
                 ];
 
                 writer.write_event(Event::Start(
-                    BytesStart::new("figure").with_attributes([("class", "content-block")]),
+                    BytesStart::new("figure")
+                        .with_attributes([("class", "content-block audio-block")]),
                 ))?;
                 writer.write_event(Event::Start(BytesStart::new("audio").with_attributes(attr)))?;
 
@@ -277,12 +354,12 @@ impl Block {
 
                 let attr = vec![
                     ("src", url.as_str()),
-                    ("class", "video-block"),
                     ("controls", "controls"), // attribute special spelling for xhtml
                 ];
 
                 writer.write_event(Event::Start(
-                    BytesStart::new("figure").with_attributes([("class", "content-block")]),
+                    BytesStart::new("figure")
+                        .with_attributes([("class", "content-block video-block")]),
                 ))?;
                 writer.write_event(Event::Start(BytesStart::new("video").with_attributes(attr)))?;
 
@@ -310,7 +387,8 @@ impl Block {
                 footnotes,
             } => {
                 writer.write_event(Event::Start(
-                    BytesStart::new("figure").with_attributes([("class", "content-block")]),
+                    BytesStart::new("figure")
+                        .with_attributes([("class", "content-block mathml-block")]),
                 ))?;
 
                 Self::write_mathml_element(writer, element_str)?;
@@ -935,6 +1013,29 @@ impl BlockBuilder {
 /// A builder for constructing EPUB content documents with various block types.
 /// This builder manages the creation and organization of content blocks including
 /// text, quotes, headings, images, audio, video, and MathML content.
+///
+/// This builder can add simple interface styles via StyleOption or modify document
+/// styles by manually write css files.
+/// The final constructed content document has the following structure:
+///
+/// ```xhtml
+/// <body>
+///     <main>
+///         <!-- The specific block structure can be queried in the Block docs. -->
+///     </main>
+///     <aside>
+///         <ul class="footnote-list">
+///             <!-- Each footnote has the same structure. -->
+///             <li class="footnote-item" id="footnote-{{ index }}">
+///                 <p>
+///                     <a herf="ref-{{ index }}">[{{ index }}]</a>
+///                     {{ footnote.content }}
+///                 </p>
+///             </li>
+///         </ul>
+///     </aside>
+/// </body>
+/// ```
 #[derive(Debug)]
 pub struct ContentBuilder {
     /// The unique identifier for the content document
@@ -950,9 +1051,12 @@ pub struct ContentBuilder {
     styles: StyleOptions,
 
     pub(crate) temp_dir: PathBuf,
+    pub(crate) css_files: Vec<PathBuf>,
 }
 
 impl ContentBuilder {
+    // TODO: Handle resource naming conflicts
+
     /// Creates a new ContentBuilder instance
     ///
     /// Initializes a ContentBuilder with the specified language code.
@@ -971,6 +1075,7 @@ impl ContentBuilder {
             title: String::new(),
             styles: StyleOptions::default(),
             temp_dir,
+            css_files: vec![],
         })
     }
 
@@ -991,6 +1096,62 @@ impl ContentBuilder {
     /// - `styles`: The StyleOptions to set for the document
     pub fn set_styles(&mut self, styles: StyleOptions) -> &mut Self {
         self.styles = styles;
+        self
+    }
+
+    /// Adds a CSS file to the document
+    ///
+    /// Copies the CSS file to a temporary directory for inclusion in the EPUB package.
+    /// The CSS file will be linked in the document's head section when generating the output.
+    ///
+    /// ## Parameters
+    /// - `css_path`: The path to the CSS file to add
+    ///
+    /// ## Return
+    /// - `Ok(&mut self)`: If the file exists and is accessible
+    /// - `Err(EpubError)`: If the file does not exist or is not accessible
+    pub fn add_css_file(&mut self, css_path: PathBuf) -> Result<&mut Self, EpubError> {
+        if !css_path.is_file() {
+            return Err(EpubBuilderError::TargetIsNotFile {
+                target_path: css_path.to_string_lossy().to_string(),
+            }
+            .into());
+        }
+
+        // we can assert that this path target to a file, so unwrap is safe here
+        let file_name = css_path.file_name().unwrap().to_string_lossy().to_string();
+        let target_dir = self.temp_dir.join("css");
+        fs::create_dir_all(&target_dir)?;
+
+        let target_path = target_dir.join(&file_name);
+        fs::copy(&css_path, &target_path)?;
+        self.css_files.push(target_path);
+        Ok(self)
+    }
+
+    /// Removes the last CSS file
+    ///
+    /// Removes and discards the last CSS file from the collection.
+    /// If the collection is empty, this method has no effect.
+    pub fn remove_last_css_file(&mut self) -> &mut Self {
+        let path = self.css_files.pop();
+        if let Some(path) = path {
+            // the better way is to handle the error
+            let _ = fs::remove_file(path);
+        }
+        self
+    }
+
+    /// Clears all CSS files
+    ///
+    /// Removes all CSS files from the document's collection.
+    pub fn clear_css_files(&mut self) -> &mut Self {
+        for path in self.css_files.iter() {
+            // the better way is to handle the error
+            let _ = fs::remove_file(path);
+        }
+        self.css_files.clear();
+
         self
     }
 
@@ -1269,7 +1430,7 @@ impl ContentBuilder {
         result.push(target.as_ref().to_path_buf());
 
         // Copy all resource files (images, audio, video) from temp directory to target directory
-        for resource_type in ["img", "audio", "video"] {
+        for resource_type in ["img", "audio", "video", "css"] {
             let source = self.temp_dir.join(resource_type);
             if source.exists() && source.is_dir() {
                 let target = target_dir.join(resource_type);
@@ -1312,7 +1473,20 @@ impl ContentBuilder {
         writer.write_event(Event::Text(BytesText::new(&self.title)))?;
         writer.write_event(Event::End(BytesEnd::new("title")))?;
 
-        self.make_style(&mut writer)?;
+        if self.css_files.is_empty() {
+            self.make_style(&mut writer)?;
+        } else {
+            for css_file in self.css_files.iter() {
+                // we can assert that this path target to a file, so unwrap is safe here
+                let file_name = css_file.file_name().unwrap().to_string_lossy().to_string();
+
+                writer.write_event(Event::Empty(BytesStart::new("link").with_attributes([
+                    ("href", format!("./css/{}", file_name).as_str()),
+                    ("rel", "stylesheet"),
+                    ("type", "text/css"),
+                ])))?;
+            }
+        }
 
         writer.write_event(Event::End(BytesEnd::new("head")))?;
 
@@ -1368,7 +1542,9 @@ impl ContentBuilder {
             blockquote {{ padding: 1em 2em; }}
             blockquote > p {{ font-style: italic; }}
             .content-block {{ margin-bottom: {paragraph_spacing}px; }}
-            .image-block, .audio-block, .video-block {{ width: 100%; }}
+            .image-block > img,
+            .audio-block > audio,
+            .video-block > video {{ width: 100%; }}
             .footnote-ref {{ font-size: 0.5em; vertical-align: super; }}
             .footnote-list {{ list-style: none; padding: 0; }}
             .footnote-item > p {{ text-indent: 0; }}
@@ -2320,6 +2496,92 @@ mod tests {
             let result = builder.make(&output_path);
             assert!(result.is_ok());
             assert!(output_path.exists());
+            assert!(fs::remove_dir_all(&temp_dir).is_ok());
+        }
+
+        #[test]
+        fn test_add_css_file() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_css_file(PathBuf::from("./test_case/style.css"));
+
+            assert!(result.is_ok());
+            assert_eq!(builder.css_files.len(), 1);
+        }
+
+        #[test]
+        fn test_add_css_file_nonexistent() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            let result = builder.add_css_file(PathBuf::from("nonexistent.css"));
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_add_multiple_css_files() {
+            let temp_dir = env::temp_dir().join(local_time());
+            assert!(fs::create_dir_all(&temp_dir).is_ok());
+
+            let css_path1 = temp_dir.join("style1.css");
+            let css_path2 = temp_dir.join("style2.css");
+            assert!(fs::write(&css_path1, "body { color: red; }").is_ok());
+            assert!(fs::write(&css_path2, "p { font-size: 16px; }").is_ok());
+
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            assert!(builder.add_css_file(css_path1).is_ok());
+            assert!(builder.add_css_file(css_path2).is_ok());
+
+            assert_eq!(builder.css_files.len(), 2);
+
+            assert!(fs::remove_dir_all(&temp_dir).is_ok());
+        }
+
+        #[test]
+        fn test_remove_last_css_file() {
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            builder
+                .add_css_file(PathBuf::from("./test_case/style.css"))
+                .unwrap();
+            assert_eq!(builder.css_files.len(), 1);
+
+            builder.remove_last_css_file();
+            assert!(builder.css_files.is_empty());
+
+            builder.remove_last_css_file();
+            assert!(builder.css_files.is_empty());
+        }
+
+        #[test]
+        fn test_clear_css_files() {
+            let temp_dir = env::temp_dir().join(local_time());
+            assert!(fs::create_dir_all(&temp_dir).is_ok());
+
+            let css_path1 = temp_dir.join("style1.css");
+            let css_path2 = temp_dir.join("style2.css");
+            assert!(fs::write(&css_path1, "body { color: red; }").is_ok());
+            assert!(fs::write(&css_path2, "p { font-size: 16px; }").is_ok());
+
+            let builder = ContentBuilder::new("chapter1", "en");
+            assert!(builder.is_ok());
+
+            let mut builder = builder.unwrap();
+            assert!(builder.add_css_file(css_path1).is_ok());
+            assert!(builder.add_css_file(css_path2).is_ok());
+            assert_eq!(builder.css_files.len(), 2);
+
+            builder.clear_css_files();
+            assert!(builder.css_files.is_empty());
+
             assert!(fs::remove_dir_all(&temp_dir).is_ok());
         }
     }
