@@ -2,7 +2,10 @@
 
 A Rust library for reading and manipulating EPUB eBook files.
 
-This library provides complete EPUB file parsing functionality, supporting EPUB 2 and EPUB 3 formats. It can extract metadata, access content files, and handle encrypted resources. Furthermore, this library also provides a convenient way to build epub files from a set of resources.
+This library provides complete EPUB file parsing functionality, supporting
+EPUB 2 and EPUB 3 formats. It can extract metadata, access content files,
+and handle encrypted resources. Furthermore, this library also provides a
+convenient way to build epub files from a set of resources.
 
 ## Features
 

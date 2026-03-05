@@ -22,7 +22,7 @@
 
 use std::{
     collections::HashMap,
-    fs::{File, canonicalize},
+    fs::{self, File},
     io::{BufReader, Read, Seek},
     path::{Path, PathBuf},
     sync::{
@@ -157,7 +157,7 @@ impl<R: Read + Seek> EpubDoc<R> {
         // 7. Verifies and extracts the unique identifier
 
         let mut archive = ZipArchive::new(reader).map_err(EpubError::from)?;
-        let epub_path = canonicalize(epub_path)?;
+        let epub_path = fs::canonicalize(epub_path)?;
 
         compression_method_check(&mut archive)?;
 
@@ -1404,9 +1404,63 @@ impl EpubDoc<BufReader<File>> {
     /// - `Err(EpubError)`: An error occurred during initialization
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, EpubError> {
         let file = File::open(&path).map_err(EpubError::from)?;
-        let path = canonicalize(path)?;
+        let path = fs::canonicalize(path)?;
 
         Self::from_reader(BufReader::new(file), path)
+    }
+
+    /// Validates whether a file is a valid EPUB document
+    ///
+    /// This function attempts to open and parse the given file as an EPUB document.
+    /// It performs basic validation to determine if the file conforms to the EPUB specification.
+    ///
+    /// ## Parameters
+    /// - `path`: The path to the file to validate
+    ///
+    /// ## Returns
+    /// - `Ok(true)`: The file is a valid EPUB document
+    /// - `Ok(false)`: The file exists but is not a valid EPUB (e.g., missing required files,
+    ///   invalid XML structure, unrecognized version)
+    /// - `Err(EpubError)`: A critical error occurred (e.g., IO error, ZIP archive error,
+    ///   encoding error, mutex poison)
+    pub fn is_valid_epub<P: AsRef<Path>>(path: P) -> Result<bool, EpubError> {
+        let result = EpubDoc::new(path);
+
+        match result {
+            Ok(_) => Ok(true),
+            Err(err) if Self::is_outside_error(&err) => Err(err),
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// Determines if an error is a "critical" external error that should be propagated
+    ///
+    /// ## Error Classification
+    /// Outside errors (returned as `Err`):
+    /// - ArchiveError: ZIP archive corruption or read errors
+    /// - IOError: File system or read errors
+    /// - MutexError: Thread synchronization errors
+    /// - Utf8DecodeError: UTF-8 encoding errors
+    /// - Utf16DecodeError: UTF-16 encoding errors
+    /// - QuickXmlError: XML parser errors
+    ///
+    /// Irrelevant errors (returned as `Ok(false)`): 
+    /// - these errors could not have occurred in this situation.
+    /// - EpubBuilderError
+    /// - WalkDirError
+    ///
+    /// Content errors (returned as `Ok(false)`):
+    /// - All other EpubError variants
+    fn is_outside_error(err: &EpubError) -> bool {
+        matches!(
+            err,
+            EpubError::ArchiveError { .. }
+                | EpubError::IOError { .. }
+                | EpubError::MutexError { .. }
+                | EpubError::Utf8DecodeError { .. }
+                | EpubError::Utf16DecodeError { .. }
+                | EpubError::QuickXmlError { .. }
+        )
     }
 }
 
@@ -2485,5 +2539,68 @@ mod tests {
         let titles = doc.get_title();
         assert!(titles.is_ok());
         assert_eq!(titles.unwrap(), vec!["Minimal EPUB 2.0"]);
+    }
+
+    #[test]
+    fn test_is_valid_epub_valid_file() {
+        let result = EpubDoc::is_valid_epub("./test_case/epub-2.epub");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    fn test_is_valid_epub_invalid_path() {
+        let result = EpubDoc::is_valid_epub("./test_case/nonexistent.epub");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_valid_epub_corrupted_zip() {
+        let temp_dir = std::env::temp_dir();
+        let corrupted_file = temp_dir.join("corrupted.epub");
+
+        std::fs::write(&corrupted_file, b"not a valid zip file").unwrap();
+
+        let result = EpubDoc::is_valid_epub(&corrupted_file);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, EpubError::ArchiveError { .. }));
+
+        std::fs::remove_file(corrupted_file).ok();
+    }
+
+    #[test]
+    fn test_is_valid_epub_valid_epub_3() {
+        let result = EpubDoc::is_valid_epub("./test_case/epub-33.epub");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    fn test_is_outside_error() {
+        let archive_error = EpubError::ArchiveError {
+            source: zip::result::ZipError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "test",
+            )),
+        };
+        assert!(EpubDoc::<BufReader<File>>::is_outside_error(&archive_error));
+
+        let io_error = EpubError::IOError {
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "test"),
+        };
+        assert!(EpubDoc::<BufReader<File>>::is_outside_error(&io_error));
+
+        let non_canonical = EpubError::NonCanonicalEpub { expected_file: "test".to_string() };
+        assert!(!EpubDoc::<BufReader<File>>::is_outside_error(
+            &non_canonical
+        ));
+
+        let missing_attr = EpubError::MissingRequiredAttribute {
+            tag: "test".to_string(),
+            attribute: "id".to_string(),
+        };
+        assert!(!EpubDoc::<BufReader<File>>::is_outside_error(&missing_attr));
     }
 }
