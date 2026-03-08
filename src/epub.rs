@@ -31,7 +31,8 @@ use std::{
     },
 };
 
-use log::warn;
+#[cfg(not(feature = "no-indexmap"))]
+use indexmap::IndexMap;
 use zip::{ZipArchive, result::ZipError};
 
 use crate::{
@@ -101,8 +102,27 @@ pub struct EpubDoc<R: Read + Seek> {
 
     /// A list of resources contained inside an epub extracted from OPF
     ///
-    /// All resources in the epub file are declared here,
-    /// and undeclared resources should not be stored in the epub file and cannot be obtained from it.
+    /// All resources in the epub file are declared here, and undeclared resources
+    /// should not be stored in the epub file and cannot be obtained from it.
+    ///
+    /// ## Storage Implementation
+    ///
+    /// By default, this field uses [`IndexMap`] to preserve the original declaration
+    /// order from the OPF file, as recommended by the EPUB specification.
+    ///
+    /// To reduce dependencies, you can enable the `no-indexmap` feature to use
+    /// [`HashMap`] instead. Note that this will not preserve the manifest order.
+    ///
+    /// ## EPUB Specification
+    ///
+    /// Per the <https://www.w3.org/TR/epub-33/#sec-manifest>:
+    ///
+    /// > The order of `item` elements within the manifest is significant for
+    /// > fallback chain processing and should be preserved when processing
+    /// > the publication.
+    #[cfg(not(feature = "no-indexmap"))]
+    pub manifest: IndexMap<String, ManifestItem>,
+    #[cfg(feature = "no-indexmap")]
     pub manifest: HashMap<String, ManifestItem>,
 
     /// Physical reading order of publications extracted from OPF
@@ -146,6 +166,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     ///
     /// ## Notes
     /// - This function assumes the EPUB file structure is valid
+    // TODO: 增加对必需的 metadata 的检查
     pub fn from_reader(reader: R, epub_path: PathBuf) -> Result<Self, EpubError> {
         // Parsing process
         // 1. Verify that the ZIP compression method conforms to the EPUB specification
@@ -166,11 +187,16 @@ impl<R: Read + Seek> EpubDoc<R> {
         let package_path = Self::parse_container(container)?;
         let base_path = package_path
             .parent()
-            .expect("所有文件的父目录不能为空")
+            .expect("the parent directory of the opf file must exist")
             .to_path_buf();
 
-        let opf_file =
-            get_file_in_zip_archive(&mut archive, package_path.to_str().unwrap())?.decode()?;
+        let opf_file = get_file_in_zip_archive(
+            &mut archive,
+            package_path
+                .to_str()
+                .expect("package_path should be valid UTF-8"),
+        )?
+        .decode()?;
         let package = XmlReader::parse(&opf_file)?;
 
         let version = Self::determine_epub_version(&package)?;
@@ -187,7 +213,12 @@ impl<R: Read + Seek> EpubDoc<R> {
             unique_identifier: String::new(),
             metadata: vec![],
             metadata_link: vec![],
+
+            #[cfg(feature = "no-indexmap")]
             manifest: HashMap::new(),
+            #[cfg(not(feature = "no-indexmap"))]
+            manifest: IndexMap::new(),
+
             spine: vec![],
             encryption: None,
             catalog: vec![],
@@ -314,7 +345,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - `manifest_element`: A reference to the `<manifest>` element in the OPF file
     fn parse_manifest(&mut self, manifest_element: &XmlElement) -> Result<(), EpubError> {
         let estimated_items = manifest_element.children().count();
+        #[cfg(feature = "no-indexmap")]
         let mut resources = HashMap::with_capacity(estimated_items);
+        #[cfg(not(feature = "no-indexmap"))]
+        let mut resources = IndexMap::with_capacity(estimated_items);
 
         for element in manifest_element.children() {
             let id = element
@@ -495,7 +529,7 @@ impl<R: Read + Seek> EpubDoc<R> {
 
                 match ncx.find_elements_by_name("docTitle").next() {
                     Some(element) => self.catalog_title = element.text(),
-                    None => warn!(
+                    None => log::warn!(
                         "Expecting to get docTitle information from the ncx file, but it's missing."
                     ),
                 };
@@ -563,6 +597,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// ## Notes
     /// - This function only checks the existence of the encrypted file;
     ///   it does not verify the validity of the encrypted information.
+    #[inline]
     pub fn has_encryption(&self) -> bool {
         self.has_encryption
     }
@@ -625,9 +660,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     ///
     /// ## Notes
     /// - The EPUB specification requires each publication to have at least one title.
-    pub fn get_title(&self) -> Result<Vec<String>, EpubError> {
+    #[inline]
+    pub fn get_title(&self) -> Vec<String> {
         self.get_metadata_value("title")
-            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "title".to_string() })
+            .expect("missing required 'title' metadata which is required by the EPUB specification")
     }
 
     /// Retrieves the language used in the publication
@@ -643,9 +679,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// ## Notes
     /// - The EPUB specification requires that each publication specify at least one primary language.
     /// - Language identifiers should conform to RFC 3066 or later standards.
-    pub fn get_language(&self) -> Result<Vec<String>, EpubError> {
-        self.get_metadata_value("language")
-            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "language".to_string() })
+    #[inline]
+    pub fn get_language(&self) -> Vec<String> {
+        self.get_metadata_value("language").expect(
+            "missing required 'language' metadata which is required by the EPUB specification",
+        )
     }
 
     /// Retrieves the identifier of a publication
@@ -663,9 +701,11 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - In the OPF file, the `unique-identifier` attribute of the `<package>` element
     ///   should point to a `<dc:identifier>` element used to uniquely identify the publication.
     ///   This means that `unique-identifier` is not exactly equal to `<dc:identifier>`.
-    pub fn get_identifier(&self) -> Result<Vec<String>, EpubError> {
-        self.get_metadata_value("identifier")
-            .ok_or_else(|| EpubError::NonCanonicalFile { tag: "identifier".to_string() })
+    #[inline]
+    pub fn get_identifier(&self) -> Vec<String> {
+        self.get_metadata_value("identifier").expect(
+            "missing required 'identifier' metadata which is required by the EPUB specification",
+        )
     }
 
     /// Retrieve resource data by resource ID
@@ -688,30 +728,9 @@ impl<R: Read + Seek> EpubDoc<R> {
         let resource_item = self
             .manifest
             .get(id)
-            .cloned()
             .ok_or_else(|| EpubError::ResourceIdNotExist { id: id.to_string() })?;
 
-        let path = resource_item.path.to_str().unwrap();
-
-        let mut archive = self.archive.lock()?;
-        let mut data = match archive.by_name(path) {
-            Ok(mut file) => {
-                let mut entry = Vec::<u8>::new();
-                file.read_to_end(&mut entry)?;
-
-                Ok(entry)
-            }
-            Err(ZipError::FileNotFound) => {
-                Err(EpubError::ResourceNotFound { resource: path.to_string() })
-            }
-            Err(err) => Err(EpubError::from(err)),
-        }?;
-
-        if let Some(method) = self.is_encryption_file(path) {
-            data = self.auto_dencrypt(&method, &mut data)?;
-        }
-
-        Ok((data, resource_item.mime))
+        self.get_resource(resource_item)
     }
 
     /// Retrieves resource item data by resource path
@@ -733,14 +752,14 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// - For unsupported encryption methods, the corresponding error will be returned.
     /// - Relative paths other than the root directory of the Epub container are not supported.
     pub fn get_manifest_item_by_path(&self, path: &str) -> Result<(Vec<u8>, String), EpubError> {
-        let id = self
+        let manifest = self
             .manifest
             .iter()
             .find(|(_, item)| item.path.to_str().unwrap() == path)
-            .map(|(id, _)| id.to_string())
+            .map(|(_, manifest)| manifest)
             .ok_or_else(|| EpubError::ResourceNotFound { resource: path.to_string() })?;
 
-        self.get_manifest_item(&id)
+        self.get_resource(manifest)
     }
 
     /// Retrieves supported resource items by resource ID, with fallback mechanism supported
@@ -761,44 +780,38 @@ impl<R: Read + Seek> EpubDoc<R> {
     pub fn get_manifest_item_with_fallback(
         &self,
         id: &str,
-        supported_format: Vec<&str>,
+        supported_format: &[&str],
     ) -> Result<(Vec<u8>, String), EpubError> {
-        let mut manifest_item = self
-            .manifest
-            .get(id)
-            .cloned()
-            .ok_or_else(|| EpubError::ResourceIdNotExist { id: id.to_string() })?;
-
-        let mut current_manifest_id = id.to_string();
-        let mut fallback_chain = Vec::<String>::new();
+        let mut current_id = id;
+        let mut fallback_chain = Vec::<&str>::new();
         'fallback: loop {
+            let manifest_item = self
+                .manifest
+                .get(current_id)
+                .ok_or_else(|| EpubError::ResourceIdNotExist { id: id.to_string() })?;
+
             if supported_format.contains(&manifest_item.mime.as_str()) {
-                return self.get_manifest_item(&current_manifest_id);
+                return self.get_resource(manifest_item);
             }
 
-            let fallback_id = manifest_item.fallback.clone();
-
-            match fallback_id {
+            let fallback_id = match &manifest_item.fallback {
                 // The loop ends when no fallback resource exists
                 None => break 'fallback,
 
                 // End the loop when the loop continues to fallback if a fallback resource exists
-                Some(id) if fallback_chain.contains(&id) => break 'fallback,
+                Some(id) if fallback_chain.contains(&id.as_str()) => break 'fallback,
 
                 Some(id) => {
-                    fallback_chain.push(id.clone());
+                    fallback_chain.push(id.as_str());
 
                     // Since only warnings are issued for fallback resource checks
                     // during initialization, the issue of fallback resources possibly
                     // not existing needs to be handled here.
-                    manifest_item = self
-                        .manifest
-                        .get(&manifest_item.fallback.unwrap())
-                        .cloned()
-                        .ok_or(EpubError::ResourceIdNotExist { id: id.clone() })?;
-                    current_manifest_id = id;
+                    id.as_str()
                 }
             };
+
+            current_id = fallback_id;
         }
 
         Err(EpubError::NoSupportedFileFormat)
@@ -823,22 +836,46 @@ impl<R: Read + Seek> EpubDoc<R> {
     pub fn get_cover(&self) -> Option<(Vec<u8>, String)> {
         self.manifest
             .values()
-            .filter_map(|manifest| {
-                if manifest.id.to_ascii_lowercase().contains("cover") {
-                    return Some(manifest.id.clone());
-                }
-
-                if let Some(properties) = &manifest.properties {
-                    if properties.to_ascii_lowercase().contains("cover") {
-                        return Some(manifest.id.clone());
-                    }
-                }
-
-                None
+            .filter(|manifest| {
+                manifest.id.to_ascii_lowercase().contains("cover")
+                    || manifest
+                        .properties
+                        .as_ref()
+                        .map(|properties| properties.to_ascii_lowercase().contains("cover"))
+                        .unwrap_or(false)
             })
-            .collect::<Vec<String>>()
-            .iter()
-            .find_map(|id| self.get_manifest_item(id).ok())
+            .find_map(|manifest| {
+                self.get_resource(manifest)
+                    .map_err(|err| log::warn!("{err}"))
+                    .ok()
+            })
+    }
+
+    /// Retrieves resource data by manifest item
+    fn get_resource(&self, resource_item: &ManifestItem) -> Result<(Vec<u8>, String), EpubError> {
+        let path = resource_item
+            .path
+            .to_str()
+            .expect("manifest item path should be valid UTF-8");
+
+        let mut archive = self.archive.lock()?;
+        let mut data = match archive.by_name(path) {
+            Ok(mut file) => {
+                let mut entry = Vec::<u8>::new();
+                file.read_to_end(&mut entry)?;
+                Ok(entry)
+            }
+            Err(ZipError::FileNotFound) => {
+                Err(EpubError::ResourceNotFound { resource: path.to_string() })
+            }
+            Err(err) => Err(EpubError::from(err)),
+        }?;
+
+        if let Some(method) = self.is_encryption_file(path) {
+            data = self.auto_dencrypt(&method, &mut data)?;
+        }
+
+        Ok((data, resource_item.mime.clone()))
     }
 
     /// Navigate to a specified chapter using the spine index
@@ -857,16 +894,18 @@ impl<R: Read + Seek> EpubDoc<R> {
     ///
     /// ## Notes
     /// - The index must be less than the total number of spine projects.
-    /// - If the resource is encrypted, it will be automatically decrypted before returning.(TODO)
+    /// - If the resource is encrypted, it will be automatically decrypted before returning.
     /// - It does not check whether the Spine project follows a linear reading order.
     pub fn navigate_by_spine_index(&mut self, index: usize) -> Option<(Vec<u8>, String)> {
         if index >= self.spine.len() {
             return None;
         }
 
-        let manifest_id = self.spine[index].idref.clone();
+        let manifest_id = self.spine[index].idref.as_ref();
         self.current_spine_index.store(index, Ordering::SeqCst);
-        self.get_manifest_item(&manifest_id).ok()
+        self.get_manifest_item(manifest_id)
+            .map_err(|err| log::warn!("{err}"))
+            .ok()
     }
 
     /// Navigate to the previous linear reading chapter
@@ -891,8 +930,10 @@ impl<R: Read + Seek> EpubDoc<R> {
             .find(|&index| self.spine[index].linear)?;
 
         self.current_spine_index.store(prev_index, Ordering::SeqCst);
-        let manifest_id = self.spine[prev_index].idref.clone();
-        self.get_manifest_item(&manifest_id).ok()
+        let manifest_id = self.spine[prev_index].idref.as_ref();
+        self.get_manifest_item(manifest_id)
+            .map_err(|err| log::warn!("{err}"))
+            .ok()
     }
 
     /// Navigate to the next linear reading chapter
@@ -916,8 +957,10 @@ impl<R: Read + Seek> EpubDoc<R> {
             (current_index + 1..self.spine.len()).find(|&index| self.spine[index].linear)?;
 
         self.current_spine_index.store(next_index, Ordering::SeqCst);
-        let manifest_id = self.spine[next_index].idref.clone();
-        self.get_manifest_item(&manifest_id).ok()
+        let manifest_id = self.spine[next_index].idref.as_ref();
+        self.get_manifest_item(manifest_id)
+            .map_err(|err| log::warn!("{err}"))
+            .ok()
     }
 
     /// Retrieves the content data of the current chapter
@@ -932,8 +975,10 @@ impl<R: Read + Seek> EpubDoc<R> {
     pub fn spine_current(&self) -> Option<(Vec<u8>, String)> {
         let manifest_id = self.spine[self.current_spine_index.load(Ordering::SeqCst)]
             .idref
-            .clone();
-        self.get_manifest_item(&manifest_id).ok()
+            .as_ref();
+        self.get_manifest_item(manifest_id)
+            .map_err(|err| log::warn!("{err}"))
+            .ok()
     }
 
     /// Determine the EPUB version from the OPF file
@@ -1254,7 +1299,7 @@ impl<R: Read + Seek> EpubDoc<R> {
 
             check_realtive_link_leakage(self.epub_path.clone(), current_dir, path)
                 .map(PathBuf::from)
-                .ok_or_else(|| EpubError::RealtiveLinkLeakage { path: path.to_string() })?
+                .ok_or_else(|| EpubError::RelativeLinkLeakage { path: path.to_string() })?
         } else if let Some(path) = path.strip_prefix("/") {
             PathBuf::from(path.to_string())
         } else {
@@ -1279,6 +1324,7 @@ impl<R: Read + Seek> EpubDoc<R> {
     /// ## Notes
     /// If an invalid fallback chain is found, a warning log will be logged
     /// but the processing flow will not be interrupted.
+    // TODO: consider using BFS to validate fallback chains, to provide efficient
     fn validate_fallback_chains(&self) {
         for (id, item) in &self.manifest {
             if item.fallback.is_none() {
@@ -1287,7 +1333,7 @@ impl<R: Read + Seek> EpubDoc<R> {
 
             let mut fallback_chain = Vec::new();
             if let Err(msg) = self.validate_fallback_chain(id, &mut fallback_chain) {
-                warn!("Invalid fallback chain for item {}: {}", id, msg);
+                log::warn!("Invalid fallback chain for item {}: {}", id, msg);
             }
         }
     }
@@ -1444,7 +1490,7 @@ impl EpubDoc<BufReader<File>> {
     /// - Utf16DecodeError: UTF-16 encoding errors
     /// - QuickXmlError: XML parser errors
     ///
-    /// Irrelevant errors (returned as `Ok(false)`): 
+    /// Irrelevant errors (returned as `Ok(false)`):
     /// - these errors could not have occurred in this situation.
     /// - EpubBuilderError
     /// - WalkDirError
@@ -1456,7 +1502,7 @@ impl EpubDoc<BufReader<File>> {
             err,
             EpubError::ArchiveError { .. }
                 | EpubError::IOError { .. }
-                | EpubError::MutexError { .. }
+                | EpubError::MutexError
                 | EpubError::Utf8DecodeError { .. }
                 | EpubError::Utf16DecodeError { .. }
                 | EpubError::QuickXmlError { .. }
@@ -1744,9 +1790,6 @@ mod tests {
 
             let doc = doc.unwrap();
             let title_list = doc.get_title();
-            assert!(title_list.is_ok());
-
-            let title_list = title_list.unwrap();
             assert_eq!(title_list.len(), 6);
             assert_eq!(
                 title_list,
@@ -1777,10 +1820,7 @@ mod tests {
             let doc_1 = doc_1.unwrap();
             let doc_2 = doc_2.unwrap();
 
-            assert_eq!(
-                doc_1.get_identifier().unwrap(),
-                doc_2.get_identifier().unwrap()
-            );
+            assert_eq!(doc_1.get_identifier(), doc_2.get_identifier());
             assert_eq!(doc_1.unique_identifier, "pkg-unique-id");
             assert_eq!(doc_2.unique_identifier, "pkg-unique-id");
         }
@@ -1866,7 +1906,7 @@ mod tests {
             assert!(doc.get_manifest_item("bar").is_ok());
 
             assert_eq!(
-                doc.get_manifest_item_with_fallback("content_001", vec!["application/xhtml+xml"])
+                doc.get_manifest_item_with_fallback("content_001", &vec!["application/xhtml+xml"])
                     .unwrap_err()
                     .to_string(),
                 "No supported file format: The fallback resource does not contain the file format you support."
@@ -1885,7 +1925,7 @@ mod tests {
             let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "image-tiff",
-                vec!["image/png", "application/xhtml+xml"],
+                &vec!["image/png", "application/xhtml+xml"],
             );
             assert!(result.is_ok());
 
@@ -1905,14 +1945,14 @@ mod tests {
             let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "content_primary",
-                vec!["application/xhtml+xml", "application/json"],
+                &vec!["application/xhtml+xml", "application/json"],
             );
             assert!(result.is_ok());
             let (_, mime) = result.unwrap();
             assert_eq!(mime, "application/json");
 
             let result = doc
-                .get_manifest_item_with_fallback("content_primary", vec!["application/xhtml+xml"]);
+                .get_manifest_item_with_fallback("content_primary", &vec!["application/xhtml+xml"]);
             assert!(result.is_ok());
             let (_, mime) = result.unwrap();
             assert_eq!(mime, "application/xhtml+xml");
@@ -1930,14 +1970,14 @@ mod tests {
             let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "content_primary",
-                vec!["application/xhtml+xml", "application/xml"],
+                &vec!["application/xhtml+xml", "application/xml"],
             );
             assert!(result.is_ok());
             let (_, mime) = result.unwrap();
             assert_eq!(mime, "application/xml");
 
             let result = doc
-                .get_manifest_item_with_fallback("content_primary", vec!["application/xhtml+xml"]);
+                .get_manifest_item_with_fallback("content_primary", &vec!["application/xhtml+xml"]);
             assert!(result.is_ok());
             let (_, mime) = result.unwrap();
             assert_eq!(mime, "application/xhtml+xml");
@@ -1955,14 +1995,14 @@ mod tests {
             let doc = doc.unwrap();
             let result = doc.get_manifest_item_with_fallback(
                 "content_primary",
-                vec!["application/xhtml+xml", "application/dtc+xml"],
+                &vec!["application/xhtml+xml", "application/dtc+xml"],
             );
             assert!(result.is_ok());
             let (_, mime) = result.unwrap();
             assert_eq!(mime, "application/dtc+xml");
 
             let result = doc
-                .get_manifest_item_with_fallback("content_primary", vec!["application/xhtml+xml"]);
+                .get_manifest_item_with_fallback("content_primary", &vec!["application/xhtml+xml"]);
             assert!(result.is_ok());
             let (_, mime) = result.unwrap();
             assert_eq!(mime, "application/xhtml+xml");
@@ -2423,8 +2463,7 @@ mod tests {
         assert_eq!(languages[0].value, "en-us");
 
         let language = doc.get_language();
-        assert!(language.is_ok());
-        assert_eq!(language.unwrap(), vec!["en-us"]);
+        assert_eq!(language, vec!["en-us"]);
     }
 
     #[test]
@@ -2494,7 +2533,8 @@ mod tests {
         assert!(doc.get_manifest_item("bar").is_ok());
 
         // 当回退链上存在可回退资源时能获取资源
-        if let Ok((_, mime)) = doc.get_manifest_item_with_fallback("content_001", vec!["image/psd"])
+        if let Ok((_, mime)) =
+            doc.get_manifest_item_with_fallback("content_001", &vec!["image/psd"])
         {
             assert_eq!(mime, "image/psd");
         } else {
@@ -2503,7 +2543,7 @@ mod tests {
 
         // 当回退链上不存在可回退资源时无法获取资源
         assert_eq!(
-            doc.get_manifest_item_with_fallback("content_001", vec!["application/xhtml+xml"])
+            doc.get_manifest_item_with_fallback("content_001", &vec!["application/xhtml+xml"])
                 .unwrap_err()
                 .to_string(),
             "No supported file format: The fallback resource does not contain the file format you support."
@@ -2537,8 +2577,7 @@ mod tests {
         let doc = doc.unwrap();
 
         let titles = doc.get_title();
-        assert!(titles.is_ok());
-        assert_eq!(titles.unwrap(), vec!["Minimal EPUB 2.0"]);
+        assert_eq!(titles, vec!["Minimal EPUB 2.0"]);
     }
 
     #[test]

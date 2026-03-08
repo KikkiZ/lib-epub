@@ -87,7 +87,7 @@ pub enum EpubError {
     /// This error occurs when a relative path link is outside the scope
     /// of an EPUB container, which is a security protection mechanism.
     #[error("Relative link leakage: Path \"{path}\" is out of container range.")]
-    RealtiveLinkLeakage { path: String },
+    RelativeLinkLeakage { path: String },
 
     /// Unable to find the resource id error
     ///
@@ -227,8 +227,8 @@ impl PartialEq for EpubError {
             }
 
             (
-                Self::RealtiveLinkLeakage { path: l_path },
-                Self::RealtiveLinkLeakage { path: r_path },
+                Self::RelativeLinkLeakage { path: l_path },
+                Self::RelativeLinkLeakage { path: r_path },
             ) => l_path == r_path,
 
             (Self::ResourceIdNotExist { id: l_id }, Self::ResourceIdNotExist { id: r_id }) => {
@@ -255,6 +255,7 @@ impl PartialEq for EpubError {
                 Self::Utf8DecodeError { source: r_source },
             ) => l_source == r_source,
 
+            #[cfg(feature = "builder")]
             (
                 Self::EpubBuilderError { source: l_source },
                 Self::EpubBuilderError { source: r_source },

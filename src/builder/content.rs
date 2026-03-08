@@ -4,7 +4,7 @@
 //!
 //! ## Usage
 //! ``` rust, no_run
-//! # #[cfg(feature = "content_builder")] {
+//! # #[cfg(feature = "content-builder")] {
 //! # fn main() -> Result<(), lib_epub::error::EpubError> {
 //! use lib_epub::{
 //!     builder::content::{Block, BlockBuilder, ContentBuilder},
@@ -36,7 +36,7 @@
 //!
 //! ## Notes
 //!
-//! - Requires `content_builder` functionality to use this module.
+//! - Requires `content-builder` functionality to use this module.
 
 use std::{
     collections::HashMap,
@@ -52,6 +52,7 @@ use quick_xml::{
     Reader, Writer,
     events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event},
 };
+use walkdir::WalkDir;
 
 use crate::{
     builder::XmlWriter,
@@ -1136,8 +1137,9 @@ impl ContentBuilder {
     pub fn remove_last_css_file(&mut self) -> &mut Self {
         let path = self.css_files.pop();
         if let Some(path) = path {
-            // the better way is to handle the error
-            let _ = fs::remove_file(path);
+            if let Err(err) = fs::remove_file(path) {
+                log::warn!("{err}");
+            };
         }
         self
     }
@@ -1147,8 +1149,9 @@ impl ContentBuilder {
     /// Removes all CSS files from the document's collection.
     pub fn clear_css_files(&mut self) -> &mut Self {
         for path in self.css_files.iter() {
-            // the better way is to handle the error
-            let _ = fs::remove_file(path);
+            if let Err(err) = fs::remove_file(path) {
+                log::warn!("{err}");
+            };
         }
         self.css_files.clear();
 
@@ -1432,20 +1435,24 @@ impl ContentBuilder {
         // Copy all resource files (images, audio, video) from temp directory to target directory
         for resource_type in ["img", "audio", "video", "css"] {
             let source = self.temp_dir.join(resource_type);
-            if source.exists() && source.is_dir() {
-                let target = target_dir.join(resource_type);
-                fs::create_dir_all(&target)?;
+            if !source.is_dir() {
+                continue;
+            }
 
-                for entry in fs::read_dir(&source)? {
-                    let entry = entry?;
-                    if entry.file_type()?.is_file() {
-                        let file_name = entry.file_name();
-                        let target = target.join(&file_name);
+            let target = target_dir.join(resource_type);
+            fs::create_dir_all(&target)?;
 
-                        fs::copy(source.join(&file_name), &target)?;
-                        result.push(target);
-                    }
-                }
+            for entry in WalkDir::new(&source)
+                .min_depth(1)
+                .into_iter()
+                .filter_map(|result| result.ok())
+                .filter(|entry| entry.file_type().is_file())
+            {
+                let file_name = entry.file_name();
+                let target = target.join(file_name);
+
+                fs::copy(entry.path(), &target)?;
+                result.push(target);
             }
         }
 

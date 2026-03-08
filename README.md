@@ -35,7 +35,7 @@ fn main() -> Result<(), EpubError> {
     let mut doc = EpubDoc::new("path/to/epub/file.epub")?;
 
     // Get metadata
-    println!("Title: {:?}", doc.get_title()?);
+    println!("Title: {:?}", doc.get_title());
     println!("Creator: {:?}", doc.get_metadata_value("creator")?);
 
     // Read content

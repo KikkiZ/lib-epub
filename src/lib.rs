@@ -26,7 +26,7 @@
 //! let doc = EpubDoc::new("path/to/epub/file.epub")?;
 //!
 //! // Get metadata
-//! println!("Title: {:?}", doc.get_title()?);
+//! println!("Title: {:?}", doc.get_title());
 //! println!("Creator: {:?}", doc.get_metadata_value("creator")?);
 //!
 //! // Read content
@@ -45,7 +45,7 @@
 //! to turn on the section you need.
 //!
 //! - `builder`: Enable `lib_epub::builder`, provides structs and trait related to building EPUB documents.
-//! - `content_builder`: Enable `lib_epub::builder::content`, provides structs and trait
+//! - `content-builder`: Enable `lib_epub::builder::content`, provides structs and trait
 //!   related to building EPUB content documents. Enabling this feature will turn on
 //!   the `builder` feature by default.
 

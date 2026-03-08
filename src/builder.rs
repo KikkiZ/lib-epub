@@ -34,9 +34,10 @@
 //!
 //! - Requires `builder` functionality to use this module.
 
+#[cfg(feature = "no-indexmap")]
+use std::collections::HashMap;
 use std::{
     cmp::Reverse,
-    collections::HashMap,
     env,
     fs::{self, File},
     io::{BufReader, Cursor, Read, Seek, Write},
@@ -45,6 +46,8 @@ use std::{
 };
 
 use chrono::{SecondsFormat, Utc};
+#[cfg(not(feature = "no-indexmap"))]
+use indexmap::IndexMap;
 use infer::Infer;
 use log::warn;
 use quick_xml::{
@@ -54,7 +57,7 @@ use quick_xml::{
 use walkdir::WalkDir;
 use zip::{CompressionMethod, ZipWriter, write::FileOptions};
 
-#[cfg(feature = "content_builder")]
+#[cfg(feature = "content-builder")]
 use crate::builder::content::ContentBuilder;
 use crate::{
     epub::EpubDoc,
@@ -65,7 +68,7 @@ use crate::{
     },
 };
 
-#[cfg(feature = "content_builder")]
+#[cfg(feature = "content-builder")]
 pub mod content;
 
 type XmlWriter = Writer<Cursor<Vec<u8>>>;
@@ -133,7 +136,10 @@ pub struct EpubBuilder<Version> {
     metadata: Vec<MetadataItem>,
 
     /// Manifest item mapping table, with ID as the key and manifest item as the value
+    #[cfg(feature = "no-indexmap")]
     manifest: HashMap<String, ManifestItem>,
+    #[cfg(not(feature = "no-indexmap"))]
+    manifest: IndexMap<String, ManifestItem>,
 
     /// List of spine items, defining the reading order
     spine: Vec<SpineItem>,
@@ -144,7 +150,7 @@ pub struct EpubBuilder<Version> {
     catalog: Vec<NavPoint>,
 
     /// List of content builder
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     content: Vec<(PathBuf, ContentBuilder)>,
 }
 
@@ -168,13 +174,16 @@ impl EpubBuilder<EpubVersion3> {
 
             rootfiles: vec![],
             metadata: vec![],
+            #[cfg(feature = "no-indexmap")]
             manifest: HashMap::new(),
+            #[cfg(not(feature = "no-indexmap"))]
+            manifest: IndexMap::new(),
             spine: vec![],
 
             catalog_title: String::new(),
             catalog: vec![],
 
-            #[cfg(feature = "content_builder")]
+            #[cfg(feature = "content-builder")]
             content: vec![],
         })
     }
@@ -322,7 +331,7 @@ impl EpubBuilder<EpubVersion3> {
         match fs::write(target_path, buf) {
             Ok(_) => {
                 self.manifest
-                    .insert(manifest_item.id.clone(), manifest_item.set_mime(&real_mime));
+                    .insert(manifest_item.id.clone(), manifest_item.set_mime(real_mime));
                 Ok(self)
             }
             Err(err) => Err(err.into()),
@@ -341,7 +350,12 @@ impl EpubBuilder<EpubVersion3> {
     /// - `Ok(&mut Self)` Successfully removed the manifest item
     /// - `Err(EpubError)` Error occurred during the removal process
     pub fn remove_manifest(&mut self, id: &str) -> Result<&mut Self, EpubError> {
-        if let Some(manifest) = self.manifest.remove(id) {
+        #[cfg(feature = "no-indexmap")]
+        let manifest = self.manifest.remove(id);
+        #[cfg(not(feature = "no-indexmap"))]
+        let manifest = self.manifest.shift_remove(id);
+
+        if let Some(manifest) = manifest {
             let target_path = self.normalize_manifest_path(&manifest.path, &manifest.id)?;
             fs::remove_file(target_path)?;
         }
@@ -358,7 +372,12 @@ impl EpubBuilder<EpubVersion3> {
     /// - `Some(ManifestItem)`: The removed manifest item
     /// - `None`: If the manifest item does not exist or error occurs during the removal process
     pub fn take_manifest(&mut self, id: &str) -> Option<ManifestItem> {
-        if let Some(manifest) = self.manifest.remove(id) {
+        #[cfg(feature = "no-indexmap")]
+        let manifest = self.manifest.remove(id);
+        #[cfg(not(feature = "no-indexmap"))]
+        let manifest = self.manifest.shift_remove(id);
+
+        if let Some(manifest) = manifest {
             let target_path = self
                 .normalize_manifest_path(&manifest.path, &manifest.id)
                 .ok()?;
@@ -376,10 +395,17 @@ impl EpubBuilder<EpubVersion3> {
     /// - `Ok(&mut Self)` - Successfully cleared all manifest items, returns a reference to itself
     /// - `Err(EpubError)` - Error occurred during the clearing process
     pub fn clear_manifests(&mut self) -> Result<&mut Self, EpubError> {
-        let keys = self.manifest.keys().cloned().collect::<Vec<String>>();
-        for id in keys {
-            self.remove_manifest(&id)?;
+        let paths = self
+            .manifest
+            .values()
+            .map(|manifest| &manifest.path)
+            .collect::<Vec<&PathBuf>>();
+
+        for path in paths {
+            let _ = fs::remove_file(path);
         }
+
+        self.manifest.clear();
 
         Ok(self)
     }
@@ -471,19 +497,19 @@ impl EpubBuilder<EpubVersion3> {
     /// Add content
     ///
     /// The content builder can be used to generate content for the book.
-    /// It is recommended to use the `content_builder` feature to use this function.
+    /// It is recommended to use the `content-builder` feature to use this function.
     ///
     /// ## Parameters
     /// - `target_path`: The path to the resource file within the EPUB container
     /// - `content`: The content builder to generate content
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     pub fn add_content(&mut self, target_path: &str, content: ContentBuilder) -> &mut Self {
         self.content.push((PathBuf::from(target_path), content));
         self
     }
 
     /// Remove the last content builder
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     pub fn remove_last_content(&mut self) -> &mut Self {
         self.content.pop();
         self
@@ -494,13 +520,13 @@ impl EpubBuilder<EpubVersion3> {
     /// ## Return
     /// - `Some((PathBuf, ContentBuilder))`: The last content builder if it existed
     /// - `None`: If no content builders exist in the list
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     pub fn take_last_content(&mut self) -> Option<(PathBuf, ContentBuilder)> {
         self.content.pop()
     }
 
     /// Clear all content builders
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     pub fn clear_contents(&mut self) -> &mut Self {
         self.content.clear();
         self
@@ -521,7 +547,7 @@ impl EpubBuilder<EpubVersion3> {
             .clear_spines()
             .clear_catalog();
 
-        #[cfg(feature = "content_builder")]
+        #[cfg(feature = "content-builder")]
         self.clear_contents();
 
         Ok(self)
@@ -541,7 +567,7 @@ impl EpubBuilder<EpubVersion3> {
         // therefore, the navigation document must be created before the opf file is created.
         self.make_container_xml()?;
         self.make_navigation_document()?;
-        #[cfg(feature = "content_builder")]
+        #[cfg(feature = "content-builder")]
         self.make_contents()?;
         self.make_opf_file()?;
         self.remove_empty_dirs()?;
@@ -702,7 +728,7 @@ impl EpubBuilder<EpubVersion3> {
     }
 
     /// Creates the content document
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     fn make_contents(&mut self) -> Result<(), EpubError> {
         let mut buf = vec![0; 512];
         let contents = std::mem::take(&mut self.content);
@@ -738,7 +764,8 @@ impl EpubBuilder<EpubVersion3> {
                     }
                     .into());
                 }
-            };
+            }
+            .to_string();
 
             self.manifest.insert(
                 manifest_id.clone(),
@@ -767,7 +794,8 @@ impl EpubBuilder<EpubVersion3> {
                         }
                         .into());
                     }
-                };
+                }
+                .to_string();
 
                 let file_name = res
                     .file_name()
@@ -996,6 +1024,7 @@ impl EpubBuilder<EpubVersion3> {
         has_title && has_identifier && has_language
     }
 
+    // TODO: consider using BFS to validate fallback chains, to provide efficient
     fn validate_manifest_fallback_chains(&self) -> Result<(), EpubError> {
         for (id, item) in &self.manifest {
             if item.fallback.is_none() {
@@ -1056,11 +1085,7 @@ impl EpubBuilder<EpubVersion3> {
             .values()
             .filter(|&item| {
                 if let Some(properties) = &item.properties {
-                    properties
-                        .clone()
-                        .split(" ")
-                        .collect::<Vec<&str>>()
-                        .contains(&"nav")
+                    properties.split(" ").any(|property| property == "nav")
                 } else {
                     false
                 }
@@ -1109,7 +1134,7 @@ impl EpubBuilder<EpubVersion3> {
                 &path.as_ref().to_string_lossy(),
             )
             .map(PathBuf::from)
-            .ok_or_else(|| EpubError::RealtiveLinkLeakage {
+            .ok_or_else(|| EpubError::RelativeLinkLeakage {
                 path: path.as_ref().to_string_lossy().to_string(),
             })?
         } else if let Ok(path) = path.as_ref().strip_prefix("/") {
@@ -1172,27 +1197,25 @@ impl<Version> Drop for EpubBuilder<Version> {
 /// Refine the mime type
 ///
 /// Optimize mime types inferred from file content based on file extensions
-fn refine_mime_type(infer_mime: &str, extension: &str) -> String {
+fn refine_mime_type<'a>(infer_mime: &'a str, extension: &'a str) -> &'a str {
     match (infer_mime, extension) {
         ("text/xml", "xhtml")
         | ("application/xml", "xhtml")
         | ("text/xml", "xht")
-        | ("application/xml", "xht") => "application/xhtml+xml".to_string(),
+        | ("application/xml", "xht") => "application/xhtml+xml",
 
-        ("text/xml", "opf") | ("application/xml", "opf") => {
-            "application/oebps-package+xml".to_string()
-        }
+        ("text/xml", "opf") | ("application/xml", "opf") => "application/oebps-package+xml",
 
-        ("text/xml", "ncx") | ("application/xml", "ncx") => "application/x-dtbncx+xml".to_string(),
+        ("text/xml", "ncx") | ("application/xml", "ncx") => "application/x-dtbncx+xml",
 
-        ("application/zip", "epub") => "application/epub+zip".to_string(),
+        ("application/zip", "epub") => "application/epub+zip",
 
-        ("text/plain", "css") => "text/css".to_string(),
-        ("text/plain", "js") => "application/javascript".to_string(),
-        ("text/plain", "json") => "application/json".to_string(),
-        ("text/plain", "svg") => "image/svg+xml".to_string(),
+        ("text/plain", "css") => "text/css",
+        ("text/plain", "js") => "application/javascript",
+        ("text/plain", "json") => "application/json",
+        ("text/plain", "svg") => "image/svg+xml",
 
-        _ => infer_mime.to_string(),
+        _ => infer_mime,
     }
 }
 
@@ -2237,7 +2260,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            EpubError::RealtiveLinkLeakage { path: "../../test.xhtml".to_string() }
+            EpubError::RelativeLinkLeakage { path: "../../test.xhtml".to_string() }
         );
 
         let result = builder.normalize_manifest_path("/test.xhtml", "id");
@@ -2271,7 +2294,7 @@ mod tests {
         assert_eq!(refine_mime_type("text/plain", "unknown"), "text/plain");
     }
 
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     mod make_contents_tests {
         use std::path::PathBuf;
 

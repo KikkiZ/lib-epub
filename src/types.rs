@@ -776,7 +776,7 @@ impl PartialEq for NavPoint {
 ///
 /// This structure represents a footnote in an EPUB content document.
 /// It contains the location within the content document and the content of the footnote.
-#[cfg(feature = "content_builder")]
+#[cfg(feature = "content-builder")]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Footnote {
     /// The position/location of the footnote reference in the content
@@ -786,14 +786,14 @@ pub struct Footnote {
     pub content: String,
 }
 
-#[cfg(feature = "content_builder")]
+#[cfg(feature = "content-builder")]
 impl Ord for Footnote {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.locate.cmp(&other.locate)
     }
 }
 
-#[cfg(feature = "content_builder")]
+#[cfg(feature = "content-builder")]
 impl PartialOrd for Footnote {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
@@ -801,7 +801,7 @@ impl PartialOrd for Footnote {
 }
 
 /// Represents the type of a block element in the content document
-#[cfg(feature = "content_builder")]
+#[cfg(feature = "content-builder")]
 #[derive(Debug)]
 pub enum BlockType {
     /// A text paragraph block
@@ -846,7 +846,8 @@ pub enum BlockType {
 ///
 /// This struct aggregates all style-related configuration for an EPUB document,
 /// including text appearance, color scheme, and page layout settings.
-#[derive(Debug, Default)]
+#[cfg(feature = "content-builder")]
+#[derive(Debug, Default, Clone)]
 pub struct StyleOptions {
     /// Text styling configuration
     pub text: TextStyle,
@@ -862,11 +863,44 @@ pub struct StyleOptions {
     pub layout: PageLayout,
 }
 
+#[cfg(feature = "content-builder")]
+#[cfg(feature = "builder")]
+impl StyleOptions {
+    /// Creates a new style options with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the text style configuration
+    pub fn with_text(&mut self, text: TextStyle) -> &mut Self {
+        self.text = text;
+        self
+    }
+
+    /// Sets the color scheme configuration
+    pub fn with_color_scheme(&mut self, color_scheme: ColorScheme) -> &mut Self {
+        self.color_scheme = color_scheme;
+        self
+    }
+
+    /// Sets the page layout configuration
+    pub fn with_layout(&mut self, layout: PageLayout) -> &mut Self {
+        self.layout = layout;
+        self
+    }
+
+    /// Builds the final style options
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+}
+
 /// Text styling configuration
 ///
 /// Defines the visual appearance of text content in the document,
 /// including font properties, sizing, and spacing.
-#[derive(Debug)]
+#[cfg(feature = "content-builder")]
+#[derive(Debug, Clone)]
 pub struct TextStyle {
     /// The base font size (default: 1.0, unit: rem)
     ///
@@ -912,6 +946,7 @@ pub struct TextStyle {
     pub text_indent: f32,
 }
 
+#[cfg(feature = "content-builder")]
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
@@ -926,11 +961,67 @@ impl Default for TextStyle {
     }
 }
 
+#[cfg(feature = "content-builder")]
+impl TextStyle {
+    /// Creates a new text style with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the font size
+    pub fn with_font_size(&mut self, font_size: f32) -> &mut Self {
+        self.font_size = font_size;
+        self
+    }
+
+    /// Sets the line height
+    pub fn with_line_height(&mut self, line_height: f32) -> &mut Self {
+        self.line_height = line_height;
+        self
+    }
+
+    /// Sets the font family
+    pub fn with_font_family(&mut self, font_family: &str) -> &mut Self {
+        self.font_family = font_family.to_string();
+        self
+    }
+
+    /// Sets the font weight
+    pub fn with_font_weight(&mut self, font_weight: &str) -> &mut Self {
+        self.font_weight = font_weight.to_string();
+        self
+    }
+
+    /// Sets the font style
+    pub fn with_font_style(&mut self, font_style: &str) -> &mut Self {
+        self.font_style = font_style.to_string();
+        self
+    }
+
+    /// Sets the letter spacing
+    pub fn with_letter_spacing(&mut self, letter_spacing: &str) -> &mut Self {
+        self.letter_spacing = letter_spacing.to_string();
+        self
+    }
+
+    /// Sets the text indent
+    pub fn with_text_indent(&mut self, text_indent: f32) -> &mut Self {
+        self.text_indent = text_indent;
+        self
+    }
+
+    /// Builds the final text style
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+}
+
 /// Color scheme configuration
 ///
 /// Defines the color palette for the document, including background,
 /// text, and link colors.
-#[derive(Debug)]
+#[cfg(feature = "content-builder")]
+#[derive(Debug, Clone)]
 pub struct ColorScheme {
     /// The background color (default: "#FFFFFF")
     ///
@@ -951,6 +1042,7 @@ pub struct ColorScheme {
     pub link: String,
 }
 
+#[cfg(feature = "content-builder")]
 impl Default for ColorScheme {
     fn default() -> Self {
         Self {
@@ -961,11 +1053,43 @@ impl Default for ColorScheme {
     }
 }
 
+#[cfg(feature = "content-builder")]
+impl ColorScheme {
+    /// Creates a new color scheme with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the background color
+    pub fn with_background(&mut self, background: &str) -> &mut Self {
+        self.background = background.to_string();
+        self
+    }
+
+    /// Sets the text color
+    pub fn with_text(&mut self, text: &str) -> &mut Self {
+        self.text = text.to_string();
+        self
+    }
+
+    /// Sets the link color
+    pub fn with_link(&mut self, link: &str) -> &mut Self {
+        self.link = link.to_string();
+        self
+    }
+
+    /// Builds the final color scheme
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+}
+
 /// Page layout configuration
 ///
 /// Defines the layout properties for pages in the document, including
 /// margins, text alignment, and paragraph spacing.
-#[derive(Debug)]
+#[cfg(feature = "content-builder")]
+#[derive(Debug, Clone)]
 pub struct PageLayout {
     /// The page margin (default: 20, unit: pixels)
     ///
@@ -983,6 +1107,7 @@ pub struct PageLayout {
     pub paragraph_spacing: usize,
 }
 
+#[cfg(feature = "content-builder")]
 impl Default for PageLayout {
     fn default() -> Self {
         Self {
@@ -993,10 +1118,42 @@ impl Default for PageLayout {
     }
 }
 
+#[cfg(feature = "content-builder")]
+impl PageLayout {
+    /// Creates a new page layout with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the page margin
+    pub fn with_margin(&mut self, margin: usize) -> &mut Self {
+        self.margin = margin;
+        self
+    }
+
+    /// Sets the text alignment
+    pub fn with_text_align(&mut self, text_align: TextAlign) -> &mut Self {
+        self.text_align = text_align;
+        self
+    }
+
+    /// Sets the paragraph spacing
+    pub fn with_paragraph_spacing(&mut self, paragraph_spacing: usize) -> &mut Self {
+        self.paragraph_spacing = paragraph_spacing;
+        self
+    }
+
+    /// Builds the final page layout
+    pub fn build(&self) -> Self {
+        Self { ..self.clone() }
+    }
+}
+
 /// Text alignment options
 ///
 /// Defines the available text alignment modes for content in the document.
-#[derive(Debug, Default, PartialEq)]
+#[cfg(feature = "content-builder")]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum TextAlign {
     /// Left-aligned text
     ///
@@ -1021,6 +1178,7 @@ pub enum TextAlign {
     Center,
 }
 
+#[cfg(feature = "content-builder")]
 impl std::fmt::Display for TextAlign {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1904,7 +2062,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     mod footnote_tests {
         use crate::types::Footnote;
 
@@ -1999,7 +2157,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "content_builder")]
+    #[cfg(feature = "content-builder")]
     mod block_type_tests {
         use crate::types::BlockType;
 
@@ -2027,6 +2185,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "content-builder")]
     mod style_options_tests {
         use crate::types::{ColorScheme, PageLayout, StyleOptions, TextAlign, TextStyle};
 
@@ -2221,6 +2380,319 @@ mod tests {
             assert_eq!(format!("{:?}", TextAlign::Right), "Right");
             assert_eq!(format!("{:?}", TextAlign::Justify), "Justify");
             assert_eq!(format!("{:?}", TextAlign::Center), "Center");
+        }
+
+        #[test]
+        fn test_style_options_builder_new() {
+            let options = StyleOptions::new();
+            assert_eq!(options.text.font_size, 1.0);
+            assert_eq!(options.color_scheme.background, "#FFFFFF");
+            assert_eq!(options.layout.margin, 20);
+        }
+
+        #[test]
+        fn test_style_options_builder_with_text() {
+            let mut options = StyleOptions::new();
+            let text_style = TextStyle::new()
+                .with_font_size(2.0)
+                .with_font_weight("bold")
+                .build();
+            options.with_text(text_style);
+
+            assert_eq!(options.text.font_size, 2.0);
+            assert_eq!(options.text.font_weight, "bold");
+        }
+
+        #[test]
+        fn test_style_options_builder_with_color_scheme() {
+            let mut options = StyleOptions::new();
+            let color = ColorScheme::new()
+                .with_background("#000000")
+                .with_text("#FFFFFF")
+                .build();
+            options.with_color_scheme(color);
+
+            assert_eq!(options.color_scheme.background, "#000000");
+            assert_eq!(options.color_scheme.text, "#FFFFFF");
+        }
+
+        #[test]
+        fn test_style_options_builder_with_layout() {
+            let mut options = StyleOptions::new();
+            let layout = PageLayout::new()
+                .with_margin(40)
+                .with_text_align(TextAlign::Justify)
+                .with_paragraph_spacing(24)
+                .build();
+            options.with_layout(layout);
+
+            assert_eq!(options.layout.margin, 40);
+            assert_eq!(options.layout.text_align, TextAlign::Justify);
+            assert_eq!(options.layout.paragraph_spacing, 24);
+        }
+
+        #[test]
+        fn test_style_options_builder_build() {
+            let options = StyleOptions::new()
+                .with_text(TextStyle::new().with_font_size(1.5).build())
+                .with_color_scheme(ColorScheme::new().with_link("#FF0000").build())
+                .with_layout(PageLayout::new().with_margin(30).build())
+                .build();
+
+            assert_eq!(options.text.font_size, 1.5);
+            assert_eq!(options.color_scheme.link, "#FF0000");
+            assert_eq!(options.layout.margin, 30);
+        }
+
+        #[test]
+        fn test_style_options_builder_chaining() {
+            let options = StyleOptions::new()
+                .with_text(
+                    TextStyle::new()
+                        .with_font_size(1.5)
+                        .with_line_height(2.0)
+                        .with_font_family("Arial")
+                        .with_font_weight("bold")
+                        .with_font_style("italic")
+                        .with_letter_spacing("0.1em")
+                        .with_text_indent(1.5)
+                        .build(),
+                )
+                .with_color_scheme(
+                    ColorScheme::new()
+                        .with_background("#CCCCCC")
+                        .with_text("#111111")
+                        .with_link("#0000FF")
+                        .build(),
+                )
+                .with_layout(
+                    PageLayout::new()
+                        .with_margin(25)
+                        .with_text_align(TextAlign::Right)
+                        .with_paragraph_spacing(20)
+                        .build(),
+                )
+                .build();
+
+            assert_eq!(options.text.font_size, 1.5);
+            assert_eq!(options.text.line_height, 2.0);
+            assert_eq!(options.text.font_family, "Arial");
+            assert_eq!(options.text.font_weight, "bold");
+            assert_eq!(options.text.font_style, "italic");
+            assert_eq!(options.text.letter_spacing, "0.1em");
+            assert_eq!(options.text.text_indent, 1.5);
+
+            assert_eq!(options.color_scheme.background, "#CCCCCC");
+            assert_eq!(options.color_scheme.text, "#111111");
+            assert_eq!(options.color_scheme.link, "#0000FF");
+
+            assert_eq!(options.layout.margin, 25);
+            assert_eq!(options.layout.text_align, TextAlign::Right);
+            assert_eq!(options.layout.paragraph_spacing, 20);
+        }
+
+        #[test]
+        fn test_text_style_builder_new() {
+            let style = TextStyle::new();
+            assert_eq!(style.font_size, 1.0);
+            assert_eq!(style.line_height, 1.6);
+        }
+
+        #[test]
+        fn test_text_style_builder_with_font_size() {
+            let mut style = TextStyle::new();
+            style.with_font_size(2.5);
+            assert_eq!(style.font_size, 2.5);
+        }
+
+        #[test]
+        fn test_text_style_builder_with_line_height() {
+            let mut style = TextStyle::new();
+            style.with_line_height(2.0);
+            assert_eq!(style.line_height, 2.0);
+        }
+
+        #[test]
+        fn test_text_style_builder_with_font_family() {
+            let mut style = TextStyle::new();
+            style.with_font_family("Helvetica, Arial");
+            assert_eq!(style.font_family, "Helvetica, Arial");
+        }
+
+        #[test]
+        fn test_text_style_builder_with_font_weight() {
+            let mut style = TextStyle::new();
+            style.with_font_weight("bold");
+            assert_eq!(style.font_weight, "bold");
+        }
+
+        #[test]
+        fn test_text_style_builder_with_font_style() {
+            let mut style = TextStyle::new();
+            style.with_font_style("italic");
+            assert_eq!(style.font_style, "italic");
+        }
+
+        #[test]
+        fn test_text_style_builder_with_letter_spacing() {
+            let mut style = TextStyle::new();
+            style.with_letter_spacing("0.05em");
+            assert_eq!(style.letter_spacing, "0.05em");
+        }
+
+        #[test]
+        fn test_text_style_builder_with_text_indent() {
+            let mut style = TextStyle::new();
+            style.with_text_indent(3.0);
+            assert_eq!(style.text_indent, 3.0);
+        }
+
+        #[test]
+        fn test_text_style_builder_build() {
+            let style = TextStyle::new()
+                .with_font_size(1.8)
+                .with_line_height(1.9)
+                .build();
+
+            assert_eq!(style.font_size, 1.8);
+            assert_eq!(style.line_height, 1.9);
+        }
+
+        #[test]
+        fn test_text_style_builder_chaining() {
+            let style = TextStyle::new()
+                .with_font_size(2.0)
+                .with_line_height(1.8)
+                .with_font_family("Georgia")
+                .with_font_weight("bold")
+                .with_font_style("italic")
+                .with_letter_spacing("0.1em")
+                .with_text_indent(0.5)
+                .build();
+
+            assert_eq!(style.font_size, 2.0);
+            assert_eq!(style.line_height, 1.8);
+            assert_eq!(style.font_family, "Georgia");
+            assert_eq!(style.font_weight, "bold");
+            assert_eq!(style.font_style, "italic");
+            assert_eq!(style.letter_spacing, "0.1em");
+            assert_eq!(style.text_indent, 0.5);
+        }
+
+        #[test]
+        fn test_color_scheme_builder_new() {
+            let scheme = ColorScheme::new();
+            assert_eq!(scheme.background, "#FFFFFF");
+            assert_eq!(scheme.text, "#000000");
+        }
+
+        #[test]
+        fn test_color_scheme_builder_with_background() {
+            let mut scheme = ColorScheme::new();
+            scheme.with_background("#FF0000");
+            assert_eq!(scheme.background, "#FF0000");
+        }
+
+        #[test]
+        fn test_color_scheme_builder_with_text() {
+            let mut scheme = ColorScheme::new();
+            scheme.with_text("#333333");
+            assert_eq!(scheme.text, "#333333");
+        }
+
+        #[test]
+        fn test_color_scheme_builder_with_link() {
+            let mut scheme = ColorScheme::new();
+            scheme.with_link("#0000FF");
+            assert_eq!(scheme.link, "#0000FF");
+        }
+
+        #[test]
+        fn test_color_scheme_builder_build() {
+            let scheme = ColorScheme::new().with_background("#123456").build();
+
+            assert_eq!(scheme.background, "#123456");
+            assert_eq!(scheme.text, "#000000");
+        }
+
+        #[test]
+        fn test_color_scheme_builder_chaining() {
+            let scheme = ColorScheme::new()
+                .with_background("#AABBCC")
+                .with_text("#DDEEFF")
+                .with_link("#112233")
+                .build();
+
+            assert_eq!(scheme.background, "#AABBCC");
+            assert_eq!(scheme.text, "#DDEEFF");
+            assert_eq!(scheme.link, "#112233");
+        }
+
+        #[test]
+        fn test_page_layout_builder_new() {
+            let layout = PageLayout::new();
+            assert_eq!(layout.margin, 20);
+            assert_eq!(layout.text_align, TextAlign::Left);
+            assert_eq!(layout.paragraph_spacing, 16);
+        }
+
+        #[test]
+        fn test_page_layout_builder_with_margin() {
+            let mut layout = PageLayout::new();
+            layout.with_margin(50);
+            assert_eq!(layout.margin, 50);
+        }
+
+        #[test]
+        fn test_page_layout_builder_with_text_align() {
+            let mut layout = PageLayout::new();
+            layout.with_text_align(TextAlign::Center);
+            assert_eq!(layout.text_align, TextAlign::Center);
+        }
+
+        #[test]
+        fn test_page_layout_builder_with_paragraph_spacing() {
+            let mut layout = PageLayout::new();
+            layout.with_paragraph_spacing(30);
+            assert_eq!(layout.paragraph_spacing, 30);
+        }
+
+        #[test]
+        fn test_page_layout_builder_build() {
+            let layout = PageLayout::new().with_margin(35).build();
+
+            assert_eq!(layout.margin, 35);
+            assert_eq!(layout.text_align, TextAlign::Left);
+        }
+
+        #[test]
+        fn test_page_layout_builder_chaining() {
+            let layout = PageLayout::new()
+                .with_margin(45)
+                .with_text_align(TextAlign::Justify)
+                .with_paragraph_spacing(28)
+                .build();
+
+            assert_eq!(layout.margin, 45);
+            assert_eq!(layout.text_align, TextAlign::Justify);
+            assert_eq!(layout.paragraph_spacing, 28);
+        }
+
+        #[test]
+        fn test_page_layout_builder_all_text_align_variants() {
+            let left = PageLayout::new().with_text_align(TextAlign::Left).build();
+            assert_eq!(left.text_align, TextAlign::Left);
+
+            let right = PageLayout::new().with_text_align(TextAlign::Right).build();
+            assert_eq!(right.text_align, TextAlign::Right);
+
+            let center = PageLayout::new().with_text_align(TextAlign::Center).build();
+            assert_eq!(center.text_align, TextAlign::Center);
+
+            let justify = PageLayout::new()
+                .with_text_align(TextAlign::Justify)
+                .build();
+            assert_eq!(justify.text_align, TextAlign::Justify);
         }
     }
 }

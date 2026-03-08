@@ -1,5 +1,5 @@
 use std::{
-    cmp::min,
+    cmp,
     collections::HashMap,
     io::{Read, Seek},
     path::PathBuf,
@@ -9,7 +9,6 @@ use std::{
 use chrono::Local;
 use quick_xml::{NsReader, events::Event};
 use sha1::{Digest, Sha1};
-use sha2::Sha256;
 use zip::{CompressionMethod, ZipArchive};
 
 use crate::error::EpubError;
@@ -102,10 +101,10 @@ pub fn compression_method_check<R: Read + Seek>(
 
         match file.compression() {
             CompressionMethod::Stored | CompressionMethod::Deflated => continue,
-            _ => {
+            method => {
                 return Err(EpubError::UnusableCompressionMethod {
                     file: file.name().to_string(),
-                    method: file.compression().to_string(),
+                    method: method.to_string(),
                 });
             }
         };
@@ -134,14 +133,11 @@ pub fn check_realtive_link_leakage(
     current_dir: PathBuf,
     check_file: &str,
 ) -> Option<String> {
-    let mut folder_depth = 0;
-    let mut remaining = check_file;
-
-    // Count how many levels we need to go up
-    while remaining.starts_with("../") {
-        folder_depth += 1;
-        remaining = &remaining[3..];
-    }
+    // Normalize the path by resolving "../"
+    // Using the `split` function offers better performance than using a `while slice` loop
+    let parts = check_file.split("../").collect::<Vec<&str>>();
+    let folder_depth = parts.len() - 1;
+    let remaining = *parts.last().unwrap_or(&"");
 
     // Navigate up the directory tree according to folder_depth
     let mut current_path = epub_path.join(current_dir);
@@ -201,18 +197,17 @@ pub fn idpf_font_encryption(data: &[u8], key: &str) -> Vec<u8> {
         return Vec::new();
     }
 
-    let mut hasher = Sha1::new();
-    hasher.update(key.as_bytes());
-    let hash = hasher.finalize();
-
-    let mut key = vec![0u8; 1040];
-    for index in 0..1040 {
-        key[index] = hash[index % hash.len()];
-    }
+    let hash = {
+        let mut hasher = Sha1::new();
+        hasher.update(key.as_bytes());
+        hasher.finalize()
+    };
 
     let mut obfuscated_data = data.to_vec();
-    for index in 0..min(1040, data.len()) {
-        obfuscated_data[index] ^= key[index];
+    let limit = cmp::min(1040, data.len());
+
+    for (index, byte) in obfuscated_data.iter_mut().take(limit).enumerate() {
+        *byte ^= hash[index % hash.len()]
     }
 
     obfuscated_data
@@ -257,16 +252,11 @@ pub fn adobe_font_encryption(data: &[u8], key: &str) -> Vec<u8> {
         return Vec::new();
     }
 
-    let mut key_vec = key.as_bytes().to_vec();
-    while key_vec.len() < 16 {
-        key_vec.extend_from_slice(key.as_bytes());
-    }
-
-    let key = &key_vec[0..min(16, key_vec.len())];
-
     let mut obfuscated_data = data.to_vec();
-    for index in 0..min(1024, data.len()) {
-        obfuscated_data[index] ^= key[index % 16];
+    let limit = cmp::min(1024, data.len());
+
+    for (index, byte) in obfuscated_data.iter_mut().take(limit).enumerate() {
+        *byte ^= key.as_bytes()[index % 16];
     }
 
     obfuscated_data
@@ -287,149 +277,6 @@ pub fn adobe_font_encryption(data: &[u8], key: &str) -> Vec<u8> {
 /// - `Vec<u8>`: Deobfuscated font data
 pub fn adobe_font_dencryption(data: &[u8], key: &str) -> Vec<u8> {
     adobe_font_encryption(data, key)
-}
-
-mod unused_method {
-    #![allow(dead_code)]
-
-    use super::*;
-
-    /// Encrypts data using the XML Encryption AES-128-CBC algorithm
-    ///
-    /// This function encrypts the provided data using the AES-128 algorithm
-    /// in CBC mode, following the XML Encryption specification.
-    ///
-    /// ## Parameters
-    /// - `data`: The raw byte data to encrypt
-    /// - `key`: The encryption key string which will be processed to
-    ///   generate the actual encryption key
-    ///
-    /// ## Return
-    /// - `Vec<u8>`: The encrypted data
-    ///
-    /// ## Notes
-    /// - Uses SHA-256 hashing to derive a 16-byte key from the provided key string
-    /// - Implements http://www.w3.org/2001/04/xmlenc#aes128-cbc algorithm
-    pub fn xml_encryption_aes128_cbc(data: &[u8], key: &str) -> Vec<u8> {
-        xml_encryotion_algorithm(data, key, 16)
-    }
-
-    /// Decrypts data using the XML Encryption AES-128-CBC algorithm
-    ///
-    /// This function decrypts the provided data using the AES-128 algorithm
-    /// in CBC mode, following the XML Encryption specification.
-    ///
-    /// ## Parameters
-    /// - `data`: The encrypted byte data to decrypt
-    /// - `key`: The decryption key string which will be processed to
-    ///   generate the actual decryption key
-    ///
-    /// ## Return
-    /// - `Vec<u8>`: The decrypted data
-    pub fn xml_decryption_aes128_cbc(data: &[u8], key: &str) -> Vec<u8> {
-        xml_encryotion_algorithm(data, key, 16)
-    }
-
-    /// Encrypts data using the XML Encryption AES-192-CBC algorithm
-    ///
-    /// This function encrypts the provided data using the AES-192 algorithm
-    /// in CBC mode, following the XML Encryption specification.
-    ///
-    /// ## Parameters
-    /// - `data`: The raw byte data to encrypt
-    /// - `key`: The encryption key string which will be processed to
-    ///   generate the actual encryption key
-    ///
-    /// ## Return
-    /// - `Vec<u8>`: The encrypted data
-    ///
-    /// ## Notes
-    /// - Uses SHA-256 hashing to derive a 24-byte key from the provided key string
-    /// - Implements http://www.w3.org/2001/04/xmlenc#aes192-cbc algorithm
-    pub fn xml_encryption_aes192_cbc(data: &[u8], key: &str) -> Vec<u8> {
-        xml_encryotion_algorithm(data, key, 24)
-    }
-
-    /// Decrypts data using the XML Encryption AES-192-CBC algorithm
-    ///
-    /// This function decrypts the provided data using the AES-192 algorithm
-    /// in CBC mode, following the XML Encryption specification.
-    ///
-    /// ## Parameters
-    /// - `data`: The encrypted byte data to decrypt
-    /// - `key`: The decryption key string which will be processed to
-    ///   generate the actual decryption key
-    ///
-    /// ## Return
-    /// - `Vec<u8>`: The decrypted data
-    pub fn xml_decryption_aes192_cbc(data: &[u8], key: &str) -> Vec<u8> {
-        xml_encryotion_algorithm(data, key, 24)
-    }
-
-    /// Encrypts data using the XML Encryption AES-256-CBC algorithm
-    ///
-    /// This function encrypts the provided data using the AES-256 algorithm
-    /// in CBC mode, following the XML Encryption specification.
-    ///
-    /// ## Parameters
-    /// - `data`: The raw byte data to encrypt
-    /// - `key`: The encryption key string which will be processed to
-    ///   generate the actual encryption key
-    ///
-    /// ## Return
-    /// - `Vec<u8>`: The encrypted data
-    ///
-    /// ## Notes
-    /// - Uses SHA-256 hashing to derive a 32-byte key from the provided key string
-    /// - Implements http://www.w3.org/2001/04/xmlenc#aes256-cbc algorithm
-    pub fn xml_encryption_aes256_cbc(data: &[u8], key: &str) -> Vec<u8> {
-        xml_encryotion_algorithm(data, key, 32)
-    }
-
-    /// Decrypts data using the XML Encryption AES-256-CBC algorithm
-    ///
-    /// This function decrypts the provided data using the AES-256 algorithm
-    /// in CBC mode, following the XML Encryption specification.
-    ///
-    /// ## Parameters
-    /// - `data`: The encrypted byte data to decrypt
-    /// - `key`: The decryption key string which will be processed to
-    ///   generate the actual decryption key
-    ///
-    /// ## Return
-    /// - `Vec<u8>`: The decrypted data
-    pub fn xml_decryption_aes256_cbc(data: &[u8], key: &str) -> Vec<u8> {
-        xml_encryotion_algorithm(data, key, 32)
-    }
-
-    /// Internal helper function for XML encryption/decryption operations
-    ///
-    /// This function performs XOR-based encryption/decryption on the provided data
-    /// using a key derived from the provided key string via SHA-256 hashing.
-    ///
-    /// ## Parameters
-    /// - `data`: The raw byte data to process
-    /// - `key`: The key string which will be processed to generate the actual encryption/decryption key
-    /// - `key_size`: The desired size of the key in bytes (16 for AES-128, 24 for AES-192, 32 for AES-256)
-    ///
-    /// ## Return
-    /// - `Vec<u8>`: The processed data (encrypted or decrypted)
-    fn xml_encryotion_algorithm(data: &[u8], key: &str, key_size: usize) -> Vec<u8> {
-        if data.is_empty() {
-            return Vec::new();
-        }
-
-        let mut hasher = Sha256::new();
-        hasher.update(key.as_bytes());
-        let hash = hasher.finalize();
-
-        let ecryption_key = &hash[..min(key_size, hash.len())];
-
-        data.iter()
-            .enumerate()
-            .map(|(index, &byte)| byte ^ ecryption_key[index % key_size])
-            .collect()
-    }
 }
 
 /// Provides functionality to decode byte data into strings
@@ -456,30 +303,28 @@ impl DecodeBytes for Vec<u8> {
             return Err(EpubError::EmptyDataError);
         }
 
-        match self[0..3] {
+        match self.as_slice() {
             // Check UTF-8 BOM (0xEF, 0xBB, 0xBF)
-            [0xEF, 0xBB, 0xBF, ..] => {
-                String::from_utf8(self[3..].to_vec()).map_err(EpubError::from)
+            [0xEF, 0xBB, 0xBF, rest @ ..] => {
+                String::from_utf8(rest.to_vec()).map_err(EpubError::from)
             }
 
             // Check UTF-16 BE BOM (0xFE, 0xFF)
-            [0xFE, 0xFF, ..] => {
-                let utf16_bytes = &self[2..];
-                let utf16_units: Vec<u16> = utf16_bytes
+            [0xFE, 0xFF, rest @ ..] => {
+                let utf16_units = rest
                     .chunks_exact(2)
                     .map(|b| u16::from_be_bytes([b[0], b[1]]))
-                    .collect();
+                    .collect::<Vec<u16>>();
 
                 String::from_utf16(&utf16_units).map_err(EpubError::from)
             }
 
             // Check UTF-16 LE BOM (0xFF, 0xFE)
-            [0xFF, 0xFE, ..] => {
-                let utf16_bytes = &self[2..];
-                let utf16_units: Vec<u16> = utf16_bytes
+            [0xFF, 0xFE, rest @ ..] => {
+                let utf16_units = rest
                     .chunks_exact(2)
                     .map(|b| u16::from_le_bytes([b[0], b[1]]))
-                    .collect();
+                    .collect::<Vec<u16>>();
 
                 String::from_utf16(&utf16_units).map_err(EpubError::from)
             }
@@ -488,29 +333,33 @@ impl DecodeBytes for Vec<u8> {
             // The analytical results for this branch are unpredictable,
             // making it difficult to cover all possibilities when testing it.
             _ => {
-                if let Ok(utf8_str) = String::from_utf8(self.to_vec()) {
-                    return Ok(utf8_str);
+                // try UTF-8 first
+                // if the byte stream is not valid UTF-8,
+                // it will be replaced with the replacement character (U+FFFD)
+                let lossless = String::from_utf8_lossy(self);
+                if !lossless.contains('\u{FFFD}') {
+                    return Ok(lossless.into_owned());
                 }
 
                 if self.len() % 2 == 0 {
-                    let utf16_units: Vec<u16> = self
-                        .chunks_exact(2)
-                        .map(|b| u16::from_be_bytes([b[0], b[1]]))
-                        .collect();
-
-                    if let Ok(utf16_str) = String::from_utf16(&utf16_units) {
-                        return Ok(utf16_str);
+                    // try UTF-16 BE
+                    if let Ok(str) = String::from_utf16(
+                        &self
+                            .chunks_exact(2)
+                            .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                            .collect::<Vec<u16>>(),
+                    ) {
+                        return Ok(str);
                     }
-                }
 
-                if self.len() % 2 == 0 {
-                    let utf16_units: Vec<u16> = self
-                        .chunks_exact(2)
-                        .map(|b| u16::from_le_bytes([b[0], b[1]]))
-                        .collect();
-
-                    if let Ok(utf16_str) = String::from_utf16(&utf16_units) {
-                        return Ok(utf16_str);
+                    // try UTF-16 LE
+                    if let Ok(str) = String::from_utf16(
+                        &self
+                            .chunks_exact(2)
+                            .map(|b| u16::from_le_bytes([b[0], b[1]]))
+                            .collect::<Vec<u16>>(),
+                    ) {
+                        return Ok(str);
                     }
                 }
 
@@ -535,7 +384,18 @@ pub trait NormalizeWhitespace {
 
 impl NormalizeWhitespace for &str {
     fn normalize_whitespace(&self) -> String {
-        self.split_whitespace().collect::<Vec<_>>().join(" ")
+        let mut result = String::new();
+        let mut is_first = true;
+
+        for word in self.split_whitespace() {
+            if !is_first {
+                result.push(' ');
+            }
+            result.push_str(word);
+            is_first = false;
+        }
+
+        result
     }
 }
 
@@ -591,10 +451,9 @@ impl XmlElement {
     /// If the element has a namespace prefix, return "prefix:name" format;
     /// otherwise, return only the element name.
     pub fn tag_name(&self) -> String {
-        if let Some(prefix) = &self.prefix {
-            format!("{}:{}", prefix, self.name)
-        } else {
-            self.name.clone()
+        match &self.prefix {
+            Some(prefix) => format!("{}:{}", prefix, self.name),
+            None => self.name.clone(),
         }
     }
 
