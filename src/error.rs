@@ -360,6 +360,14 @@ pub enum EpubBuilderError {
     #[error("Need at least one rootfile.")]
     MissingRootfile,
 
+    /// Spine manifest reference not found error
+    ///
+    /// This error is triggered when a spine item references a manifest item
+    /// that does not exist in the manifest. Each spine item's `idref` must
+    /// correspond to an existing item in the manifest.
+    #[error("Spine item '{idref}' references a manifest item that does not exist.")]
+    SpineManifestNotFound { idref: String },
+
     /// Target is not a file error
     ///
     /// This error is triggered when the specified target path is not a file.
