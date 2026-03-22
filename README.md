@@ -7,6 +7,11 @@ EPUB 2 and EPUB 3 formats. It can extract metadata, access content files,
 and handle encrypted resources. Furthermore, this library also provides a
 convenient way to build epub files from a set of resources.
 
+## NOTICE
+
+This crate was refactored in version 0.2.0, resulting in significant changes
+to the API in the builder module. Please upgrade with caution.
+
 ## Features
 
 - Parse EPUB file structure and containers, extract metadata, access resource files.
@@ -59,23 +64,37 @@ fn main() -> Result<(), EpubError> {
     let mut builder = EpubBuilder::<EpubVersion3>::new()?;
 
     builder
-        .add_rootfile("EPUB/content.opf")?
-        .add_metadata(MetadataItem::new("title", "Test Book"))
-        .add_metadata(MetadataItem::new("language", "en"))
-        .add_metadata(
+        .rootfile()
+        .add("EPUB/content.opf")?;
+
+    builder
+        .metadata()
+        .add(MetadataItem::new("title", "Test Book"))
+        .add(MetadataItem::new("language", "en"))
+        .add(
             MetadataItem::new("identifier", "unique-id")
                 .with_id("pub-id")
                 .build(),
-        )
-        .add_manifest(
+        );
+
+    builder
+        .manifest()
+        .add(
             "./test_case/Overview.xhtml",
             ManifestItem::new("content", "target/path")?,
-        )?
-        .add_spine(SpineItem::new("content"))
-        .add_catalog_item(NavPoint::new("label"));
+        )?;
+
+    builder
+        .spine()
+        .add(SpineItem::new("content"));
+
+    builder
+        .catalog()
+        .set_title("Catalog Title")
+        .add(NavPoint::new("label"));
 
     builder.build("output.epub")?;
-
+    
     Ok(())
 }
 ```

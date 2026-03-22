@@ -14,7 +14,7 @@
 //! Many of these types implement a builder pattern for easier construction when the
 //! `builder` feature is enabled. See individual type documentation for details.
 
-use std::{fmt::Display, path::PathBuf};
+use std::path::PathBuf;
 
 #[cfg(feature = "builder")]
 use crate::{
@@ -842,7 +842,8 @@ pub enum BlockType {
     MathML,
 }
 
-impl Display for BlockType {
+#[cfg(feature = "content-builder")]
+impl std::fmt::Display for BlockType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BlockType::Text => write!(f, "Text"),

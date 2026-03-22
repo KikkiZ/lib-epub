@@ -965,14 +965,6 @@ impl BlockBuilder {
     }
 
     /// Validates that the file type matches expected types
-    ///
-    /// Identifies the file type by reading the file header and validates whether
-    /// it belongs to one of the expected types. Uses file magic numbers for
-    /// reliable type detection.
-    ///
-    /// ## Parameters
-    /// - `path`: The path to the file to check
-    /// - `types`: The vector of expected file types
     fn is_target_type(path: impl AsRef<Path>, types: Vec<MatcherType>) -> Result<(), EpubError> {
         let path = path.as_ref();
         if !path.is_file() {
@@ -1010,26 +1002,6 @@ impl BlockBuilder {
 ///
 /// This builder can add simple interface styles via StyleOption or modify document
 /// styles by manually write css files.
-/// The final constructed content document has the following structure:
-///
-/// ```xhtml
-/// <body>
-///     <main>
-///         <!-- The specific block structure can be queried in the Block docs. -->
-///     </main>
-///     <aside>
-///         <ul class="footnote-list">
-///             <!-- Each footnote has the same structure. -->
-///             <li class="footnote-item" id="footnote-{{ index }}">
-///                 <p>
-///                     <a herf="ref-{{ index }}">[{{ index }}]</a>
-///                     {{ footnote.content }}
-///                 </p>
-///             </li>
-///         </ul>
-///     </aside>
-/// </body>
-/// ```
 #[derive(Debug)]
 pub struct ContentBuilder {
     /// The unique identifier for the content document
@@ -1073,21 +1045,13 @@ impl ContentBuilder {
         })
     }
 
-    /// Sets the title of the document
-    ///
-    /// Sets the title that will be displayed in the document's head section.
-    ///
-    /// ## Parameters
-    /// - `title`: The title text for the document
+    /// Sets the title displayed in the document's head section.
     pub fn set_title(&mut self, title: &str) -> &mut Self {
         self.title = title.to_string();
         self
     }
 
     /// Sets the styles for the document
-    ///
-    /// ## Parameters
-    /// - `styles`: The StyleOptions to set for the document
     pub fn set_styles(&mut self, styles: StyleOptions) -> &mut Self {
         self.styles = styles;
         self
@@ -1342,6 +1306,27 @@ impl ContentBuilder {
     }
 
     /// Builds content document
+    ///
+    /// The final constructed content document has the following structure:
+    ///
+    /// ```xhtml
+    /// <body>
+    ///     <main>
+    ///         <!-- The specific block structure can be queried in the Block docs. -->
+    ///     </main>
+    ///     <aside>
+    ///         <ul class="footnote-list">
+    ///             <!-- Each footnote has the same structure. -->
+    ///             <li class="footnote-item" id="footnote-{{ index }}">
+    ///                 <p>
+    ///                     <a herf="ref-{{ index }}">[{{ index }}]</a>
+    ///                     {{ footnote.content }}
+    ///                 </p>
+    ///             </li>
+    ///         </ul>
+    ///     </aside>
+    /// </body>
+    /// ```
     ///
     /// ## Parameters
     /// - `target`: The file path where the document should be written
