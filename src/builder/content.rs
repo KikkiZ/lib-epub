@@ -18,7 +18,7 @@
 //!         locate: 15,
 //!         content: "This is a footnote.".to_string(),
 //!     });
-//! let block = block_builder.build()?;
+//! let block = block_builder.try_into()?;
 //!
 //! let mut builder = ContentBuilder::new("chapter1", "zh-CN")?;
 //! builder.set_title("My Chapter")
@@ -432,13 +432,13 @@ impl Block {
 
     pub fn take_footnotes(&self) -> Vec<Footnote> {
         match self {
-            Block::Text { footnotes, .. } => footnotes.to_vec(),
-            Block::Quote { footnotes, .. } => footnotes.to_vec(),
-            Block::Title { footnotes, .. } => footnotes.to_vec(),
-            Block::Image { footnotes, .. } => footnotes.to_vec(),
-            Block::Audio { footnotes, .. } => footnotes.to_vec(),
-            Block::Video { footnotes, .. } => footnotes.to_vec(),
-            Block::MathML { footnotes, .. } => footnotes.to_vec(),
+            Block::Text { footnotes, .. }
+            | Block::Quote { footnotes, .. }
+            | Block::Title { footnotes, .. }
+            | Block::Image { footnotes, .. }
+            | Block::Audio { footnotes, .. }
+            | Block::Video { footnotes, .. }
+            | Block::MathML { footnotes, .. } => footnotes.to_vec(),
         }
     }
 
@@ -571,6 +571,155 @@ impl Block {
 
         Ok(())
     }
+
+    /// Validates the footnotes in a block
+    ///
+    /// Ensures all footnotes reference valid positions within the content.
+    /// For Text, Quote, and Title blocks, footnotes must be within the character count of the content.
+    /// For Image, Audio, Video, and MathML blocks, footnotes must be within the character count
+    /// of the caption (if a caption is set). Blocks with media but no caption cannot have footnotes.
+    fn validate_footnotes(&self) -> Result<(), EpubError> {
+        match self {
+            Block::Text { content, footnotes }
+            | Block::Quote { content, footnotes }
+            | Block::Title { content, footnotes, .. } => {
+                let max_locate = content.chars().count();
+                for footnote in footnotes.iter() {
+                    if footnote.locate == 0 || footnote.locate > max_locate {
+                        return Err(EpubBuilderError::InvalidFootnoteLocate { max_locate }.into());
+                    }
+                }
+
+                Ok(())
+            }
+
+            Block::Image { caption, footnotes, .. }
+            | Block::MathML { caption, footnotes, .. }
+            | Block::Video { caption, footnotes, .. }
+            | Block::Audio { caption, footnotes, .. } => {
+                if let Some(caption) = caption {
+                    let max_locate = caption.chars().count();
+                    for footnote in footnotes.iter() {
+                        if footnote.locate == 0 || footnote.locate > caption.chars().count() {
+                            return Err(
+                                EpubBuilderError::InvalidFootnoteLocate { max_locate }.into()
+                            );
+                        }
+                    }
+                } else if !footnotes.is_empty() {
+                    return Err(EpubBuilderError::InvalidFootnoteLocate { max_locate: 0 }.into());
+                }
+
+                Ok(())
+            }
+        }
+    }
+
+    fn missing_error(block_type: BlockType, missing_data: &str) -> EpubError {
+        EpubBuilderError::MissingNecessaryBlockData {
+            block_type: block_type.to_string(),
+            missing_data: format!("'{}'", missing_data),
+        }
+        .into()
+    }
+}
+
+impl TryFrom<BlockBuilder> for Block {
+    type Error = EpubError;
+
+    fn try_from(builder: BlockBuilder) -> Result<Self, Self::Error> {
+        let block = match builder.block_type {
+            BlockType::Text => {
+                let content = builder
+                    .content
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "content"))?;
+                Block::Text { content, footnotes: builder.footnotes }
+            }
+
+            BlockType::Quote => {
+                let content = builder
+                    .content
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "content"))?;
+                Block::Quote { content, footnotes: builder.footnotes }
+            }
+
+            BlockType::Title => {
+                let content = builder
+                    .content
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "content"))?;
+                let level = builder
+                    .level
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "level"))?;
+
+                Block::Title {
+                    content,
+                    footnotes: builder.footnotes,
+                    level,
+                }
+            }
+
+            BlockType::Image => {
+                let url = builder
+                    .url
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "url"))?;
+
+                Block::Image {
+                    url,
+                    alt: builder.alt,
+                    caption: builder.caption,
+                    footnotes: builder.footnotes,
+                }
+            }
+
+            BlockType::Audio => {
+                let url = builder
+                    .url
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "url"))?;
+                let fallback = builder
+                    .fallback
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "fallback"))?;
+
+                Block::Audio {
+                    url,
+                    fallback,
+                    caption: builder.caption,
+                    footnotes: builder.footnotes,
+                }
+            }
+
+            BlockType::Video => {
+                let url = builder
+                    .url
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "url"))?;
+                let fallback = builder
+                    .fallback
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "fallback"))?;
+
+                Block::Video {
+                    url,
+                    fallback,
+                    caption: builder.caption,
+                    footnotes: builder.footnotes,
+                }
+            }
+
+            BlockType::MathML => {
+                let element_str = builder
+                    .element_str
+                    .ok_or_else(|| Self::missing_error(builder.block_type, "element_str"))?;
+
+                Block::MathML {
+                    element_str,
+                    fallback_image: builder.fallback_image,
+                    caption: builder.caption,
+                    footnotes: builder.footnotes,
+                }
+            }
+        };
+
+        block.validate_footnotes()?;
+        Ok(block)
+    }
 }
 
 /// Block Builder
@@ -579,9 +728,12 @@ impl Block {
 ///
 /// ## Example
 /// ```rust
-/// # #[cfg(feature = "builder")]
+/// # #[cfg(feature = "content-builder")]
 /// # fn main() -> Result<(), lib_epub::error::EpubError> {
-/// use lib_epub::{builder::content::BlockBuilder, types::{BlockType, Footnote}};
+/// use lib_epub::{
+///     builder::content::{Block, BlockBuilder},
+///     types::{BlockType, Footnote}
+/// };
 ///
 /// let mut builder = BlockBuilder::new(BlockType::Text);
 /// builder.set_content("Hello, world!").add_footnote(Footnote {
@@ -589,14 +741,13 @@ impl Block {
 ///     locate: 13,
 /// });
 ///
-/// builder.build()?;
+/// let block: Block = builder.try_into()?;
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// ## Notes
 /// - Not all fields are required for all block types. Required fields vary by block type.
-/// - The `build()` method will validate that required fields are set for the specified block type.
 #[derive(Debug)]
 pub struct BlockBuilder {
     /// The type of block to construct
@@ -799,23 +950,6 @@ impl BlockBuilder {
         self
     }
 
-    /// Removes the last footnote
-    ///
-    /// Removes and discards the last footnote from the footnotes collection.
-    /// If the collection is empty, this method has no effect.
-    pub fn remove_last_footnote(&mut self) -> &mut Self {
-        self.footnotes.pop();
-        self
-    }
-
-    /// Clears all footnotes
-    ///
-    /// Removes all footnotes from the block's footnotes collection.
-    pub fn clear_footnotes(&mut self) -> &mut Self {
-        self.footnotes.clear();
-        self
-    }
-
     /// Builds the block
     ///
     /// Constructs a Block instance based on the configured parameters and block type.
@@ -825,116 +959,9 @@ impl BlockBuilder {
     /// ## Return
     /// - `Ok(Block)`: Build successful
     /// - `Err(EpubError)`: Error occurred during the build process
+    #[deprecated(since = "0.2.0", note = "use `try_into()` instead")]
     pub fn build(self) -> Result<Block, EpubError> {
-        let block = match self.block_type {
-            BlockType::Text => {
-                if let Some(content) = self.content {
-                    Block::Text { content, footnotes: self.footnotes }
-                } else {
-                    return Err(EpubBuilderError::MissingNecessaryBlockData {
-                        block_type: "Text".to_string(),
-                        missing_data: "'content'".to_string(),
-                    }
-                    .into());
-                }
-            }
-
-            BlockType::Quote => {
-                if let Some(content) = self.content {
-                    Block::Quote { content, footnotes: self.footnotes }
-                } else {
-                    return Err(EpubBuilderError::MissingNecessaryBlockData {
-                        block_type: "Quote".to_string(),
-                        missing_data: "'content'".to_string(),
-                    }
-                    .into());
-                }
-            }
-
-            BlockType::Title => match (self.content, self.level) {
-                (Some(content), Some(level)) => Block::Title {
-                    content,
-                    level,
-                    footnotes: self.footnotes,
-                },
-                _ => {
-                    return Err(EpubBuilderError::MissingNecessaryBlockData {
-                        block_type: "Title".to_string(),
-                        missing_data: "'content' or 'level'".to_string(),
-                    }
-                    .into());
-                }
-            },
-
-            BlockType::Image => {
-                if let Some(url) = self.url {
-                    Block::Image {
-                        url,
-                        alt: self.alt,
-                        caption: self.caption,
-                        footnotes: self.footnotes,
-                    }
-                } else {
-                    return Err(EpubBuilderError::MissingNecessaryBlockData {
-                        block_type: "Image".to_string(),
-                        missing_data: "'url'".to_string(),
-                    }
-                    .into());
-                }
-            }
-
-            BlockType::Audio => match (self.url, self.fallback) {
-                (Some(url), Some(fallback)) => Block::Audio {
-                    url,
-                    fallback,
-                    caption: self.caption,
-                    footnotes: self.footnotes,
-                },
-                _ => {
-                    return Err(EpubBuilderError::MissingNecessaryBlockData {
-                        block_type: "Audio".to_string(),
-                        missing_data: "'url' or 'fallback'".to_string(),
-                    }
-                    .into());
-                }
-            },
-
-            BlockType::Video => match (self.url, self.fallback) {
-                (Some(url), Some(fallback)) => Block::Video {
-                    url,
-                    fallback,
-                    caption: self.caption,
-                    footnotes: self.footnotes,
-                },
-                _ => {
-                    return Err(EpubBuilderError::MissingNecessaryBlockData {
-                        block_type: "Video".to_string(),
-                        missing_data: "'url' or 'fallback'".to_string(),
-                    }
-                    .into());
-                }
-            },
-
-            BlockType::MathML => {
-                if let Some(element_str) = self.element_str {
-                    Block::MathML {
-                        element_str,
-                        fallback_image: self.fallback_image,
-                        caption: self.caption,
-                        footnotes: self.footnotes,
-                    }
-                } else {
-                    return Err(EpubBuilderError::MissingNecessaryBlockData {
-                        block_type: "MathML".to_string(),
-                        missing_data: "'element_str'".to_string(),
-                    }
-                    .into());
-                }
-            }
-        };
-
-        Self::validate_footnotes(&block)?;
-        Ok(block)
+        self.try_into()
     }
 
     /// Validates that the file type matches expected types
@@ -946,7 +973,8 @@ impl BlockBuilder {
     /// ## Parameters
     /// - `path`: The path to the file to check
     /// - `types`: The vector of expected file types
-    fn is_target_type(path: &PathBuf, types: Vec<MatcherType>) -> Result<(), EpubError> {
+    fn is_target_type(path: impl AsRef<Path>, types: Vec<MatcherType>) -> Result<(), EpubError> {
+        let path = path.as_ref();
         if !path.is_file() {
             return Err(EpubBuilderError::TargetIsNotFile {
                 target_path: path.to_string_lossy().to_string(),
@@ -970,49 +998,6 @@ impl BlockBuilder {
             .into()),
 
             _ => Ok(()),
-        }
-    }
-
-    /// Validates the footnotes in a block
-    ///
-    /// Ensures all footnotes reference valid positions within the content.
-    /// For Text, Quote, and Title blocks, footnotes must be within the character count of the content.
-    /// For Image, Audio, Video, and MathML blocks, footnotes must be within the character count
-    /// of the caption (if a caption is set). Blocks with media but no caption cannot have footnotes.
-    fn validate_footnotes(block: &Block) -> Result<(), EpubError> {
-        match block {
-            Block::Text { content, footnotes }
-            | Block::Quote { content, footnotes }
-            | Block::Title { content, footnotes, .. } => {
-                let max_locate = content.chars().count();
-                for footnote in footnotes.iter() {
-                    if footnote.locate == 0 || footnote.locate > content.chars().count() {
-                        return Err(EpubBuilderError::InvalidFootnoteLocate { max_locate }.into());
-                    }
-                }
-
-                Ok(())
-            }
-
-            Block::Image { caption, footnotes, .. }
-            | Block::MathML { caption, footnotes, .. }
-            | Block::Video { caption, footnotes, .. }
-            | Block::Audio { caption, footnotes, .. } => {
-                if let Some(caption) = caption {
-                    let max_locate = caption.chars().count();
-                    for footnote in footnotes.iter() {
-                        if footnote.locate == 0 || footnote.locate > caption.chars().count() {
-                            return Err(
-                                EpubBuilderError::InvalidFootnoteLocate { max_locate }.into()
-                            );
-                        }
-                    }
-                } else if !footnotes.is_empty() {
-                    return Err(EpubBuilderError::InvalidFootnoteLocate { max_locate: 0 }.into());
-                }
-
-                Ok(())
-            }
         }
     }
 }
@@ -1138,34 +1123,6 @@ impl ContentBuilder {
         Ok(self)
     }
 
-    /// Removes the last CSS file
-    ///
-    /// Removes and discards the last CSS file from the collection.
-    /// If the collection is empty, this method has no effect.
-    pub fn remove_last_css_file(&mut self) -> &mut Self {
-        let path = self.css_files.pop();
-        if let Some(path) = path {
-            if let Err(err) = fs::remove_file(path) {
-                log::warn!("{err}");
-            };
-        }
-        self
-    }
-
-    /// Clears all CSS files
-    ///
-    /// Removes all CSS files from the document's collection.
-    pub fn clear_css_files(&mut self) -> &mut Self {
-        for path in self.css_files.iter() {
-            if let Err(err) = fs::remove_file(path) {
-                log::warn!("{err}");
-            };
-        }
-        self.css_files.clear();
-
-        self
-    }
-
     /// Adds a block to the document
     ///
     /// Adds a constructed Block to the document.
@@ -1205,7 +1162,7 @@ impl ContentBuilder {
         let mut builder = BlockBuilder::new(BlockType::Text);
         builder.set_content(content).set_footnotes(footnotes);
 
-        self.blocks.push(builder.build()?);
+        self.blocks.push(builder.try_into()?);
         Ok(self)
     }
 
@@ -1224,7 +1181,7 @@ impl ContentBuilder {
         let mut builder = BlockBuilder::new(BlockType::Quote);
         builder.set_content(content).set_footnotes(footnotes);
 
-        self.blocks.push(builder.build()?);
+        self.blocks.push(builder.try_into()?);
         Ok(self)
     }
 
@@ -1248,7 +1205,7 @@ impl ContentBuilder {
             .set_title_level(level)
             .set_footnotes(footnotes);
 
-        self.blocks.push(builder.build()?);
+        self.blocks.push(builder.try_into()?);
         Ok(self)
     }
 
@@ -1280,7 +1237,7 @@ impl ContentBuilder {
             builder.set_caption(caption);
         }
 
-        self.blocks.push(builder.build()?);
+        self.blocks.push(builder.try_into()?);
         self.handle_resource()?;
         Ok(self)
     }
@@ -1312,7 +1269,7 @@ impl ContentBuilder {
             builder.set_caption(caption);
         }
 
-        self.blocks.push(builder.build()?);
+        self.blocks.push(builder.try_into()?);
         self.handle_resource()?;
         Ok(self)
     }
@@ -1344,7 +1301,7 @@ impl ContentBuilder {
             builder.set_caption(caption);
         }
 
-        self.blocks.push(builder.build()?);
+        self.blocks.push(builder.try_into()?);
         self.handle_resource()?;
         Ok(self)
     }
@@ -1379,37 +1336,9 @@ impl ContentBuilder {
             builder.set_caption(caption);
         }
 
-        self.blocks.push(builder.build()?);
+        self.blocks.push(builder.try_into()?);
         self.handle_resource()?;
         Ok(self)
-    }
-
-    /// Removes the last block from the document
-    ///
-    /// Discards the most recently added block. If no blocks exist, this method has no effect.
-    pub fn remove_last_block(&mut self) -> &mut Self {
-        self.blocks.pop();
-        self
-    }
-
-    /// Takes ownership of the last block
-    ///
-    /// Removes and returns the most recently added block without consuming the builder.
-    /// This allows you to extract a block while keeping the builder alive.
-    ///
-    /// ## Return
-    /// - `Some(Block)`: If a block exists
-    /// - `None`: If the blocks collection is empty
-    pub fn take_last_block(&mut self) -> Option<Block> {
-        self.blocks.pop()
-    }
-
-    /// Clears all blocks from the document
-    ///
-    /// Removes all blocks from the document while keeping the language and title settings intact.
-    pub fn clear_blocks(&mut self) -> &mut Self {
-        self.blocks.clear();
-        self
     }
 
     /// Builds content document
@@ -1630,44 +1559,31 @@ impl ContentBuilder {
     /// to the temporary directory for inclusion in the EPUB package.
     fn handle_resource(&mut self) -> Result<(), EpubError> {
         match self.blocks.last() {
-            Some(Block::Image { url, .. }) => {
-                let target_dir = self.temp_dir.join("img");
-                fs::create_dir_all(&target_dir)?;
+            Some(Block::Image { url, .. }) => self.copy_to_temp(url, "img")?,
 
-                let target_path = target_dir.join(url.file_name().unwrap());
-                fs::copy(url, &target_path)?;
+            Some(Block::Video { url, .. }) => self.copy_to_temp(url, "video")?,
+
+            Some(Block::Audio { url, .. }) => self.copy_to_temp(url, "audio")?,
+
+            Some(Block::MathML { fallback_image: Some(url), .. }) => {
+                self.copy_to_temp(url, "img")?
             }
 
-            Some(Block::Video { url, .. }) => {
-                let target_dir = self.temp_dir.join("video");
-                fs::create_dir_all(&target_dir)?;
-
-                let target_path = target_dir.join(url.file_name().unwrap());
-                fs::copy(url, &target_path)?;
-            }
-
-            Some(Block::Audio { url, .. }) => {
-                let target_dir = self.temp_dir.join("audio");
-                fs::create_dir_all(&target_dir)?;
-
-                let target_path = target_dir.join(url.file_name().unwrap());
-                fs::copy(url, &target_path)?;
-            }
-
-            Some(Block::MathML { fallback_image, .. }) if fallback_image.is_some() => {
-                let target_dir = self.temp_dir.join("img");
-                fs::create_dir_all(&target_dir)?;
-
-                let target_path =
-                    target_dir.join(fallback_image.as_ref().unwrap().file_name().unwrap());
-
-                fs::copy(fallback_image.as_ref().unwrap(), &target_path)?;
-            }
-
-            Some(_) => {}
-            None => {}
+            _ => {}
         }
 
+        Ok(())
+    }
+
+    #[inline]
+    fn copy_to_temp(&self, source: impl AsRef<Path>, resource_type: &str) -> Result<(), EpubError> {
+        let target_dir = self.temp_dir.join(resource_type);
+        fs::create_dir_all(&target_dir)?;
+
+        let source = source.as_ref();
+        let target_path = target_dir.join(source.file_name().unwrap());
+
+        fs::copy(source, &target_path)?;
         Ok(())
     }
 }
@@ -1682,127 +1598,12 @@ impl Drop for ContentBuilder {
 
 #[cfg(test)]
 mod tests {
-    // use std::{path::PathBuf, vec};
-
-    // use crate::{
-    //     builder::content::{ContentBuilder, Footnote},
-    //     error::EpubError,
-    // };
-
-    // #[test]
-    // fn test() -> Result<(), EpubError> {
-    //     let ele_string = r#"
-    //     <math xmlns="http://www.w3.org/1998/Math/MathML">
-    //       <mrow>
-    //         <munderover>
-    //           <mo>∑</mo>
-    //           <mrow>
-    //             <mi>n</mi>
-    //             <mo>=</mo>
-    //             <mn>1</mn>
-    //           </mrow>
-    //           <mrow>
-    //             <mo>+</mo>
-    //             <mn>∞</mn>
-    //           </mrow>
-    //         </munderover>
-    //         <mfrac>
-    //           <mn>1</mn>
-    //           <msup>
-    //             <mi>n</mi>
-    //             <mn>2</mn>
-    //           </msup>
-    //         </mfrac>
-    //       </mrow>
-    //     </math>"#;
-
-    //     let content = ContentBuilder::new("test", "zh-CN")?
-    //         .set_title("Test")
-    //         .add_title_block(
-    //             "This is a title",
-    //             2,
-    //             vec![
-    //                 Footnote {
-    //                     content: "This is a footnote for title.".to_string(),
-    //                     locate: 15,
-    //                 },
-    //                 Footnote {
-    //                     content: "This is another footnote for title.".to_string(),
-    //                     locate: 4,
-    //                 },
-    //             ],
-    //         )?
-    //         .add_text_block(
-    //             "This is a paragraph.",
-    //             vec![
-    //                 Footnote {
-    //                     content: "This is a footnote.".to_string(),
-    //                     locate: 4,
-    //                 },
-    //                 Footnote {
-    //                     content: "This is another footnote.".to_string(),
-    //                     locate: 20,
-    //                 },
-    //                 Footnote {
-    //                     content: "This is a third footnote.".to_string(),
-    //                     locate: 4,
-    //                 },
-    //             ],
-    //         )?
-    //         .add_image_block(
-    //             PathBuf::from("C:\\Users\\Kikki\\Desktop\\background.jpg"),
-    //             None,
-    //             Some("this is an image".to_string()),
-    //             vec![Footnote {
-    //                 content: "This is a footnote for image.".to_string(),
-    //                 locate: 16,
-    //             }],
-    //         )?
-    //         .add_quote_block(
-    //             "Quote a text.",
-    //             vec![Footnote {
-    //                 content: "This is a footnote for quote.".to_string(),
-    //                 locate: 13,
-    //             }],
-    //         )?
-    //         .add_audio_block(
-    //             PathBuf::from("C:\\Users\\Kikki\\Desktop\\audio.mp3"),
-    //             "This a fallback string".to_string(),
-    //             Some("this is an audio".to_string()),
-    //             vec![Footnote {
-    //                 content: "This is a footnote for audio.".to_string(),
-    //                 locate: 4,
-    //             }],
-    //         )?
-    //         .add_video_block(
-    //             PathBuf::from("C:\\Users\\Kikki\\Desktop\\秋日何时来2024BD1080P.mp4"),
-    //             "This a fallback string".to_string(),
-    //             Some("this a video".to_string()),
-    //             vec![Footnote {
-    //                 content: "This is a footnote for video.".to_string(),
-    //                 locate: 12,
-    //             }],
-    //         )?
-    //         .add_mathml_block(
-    //             ele_string.to_owned(),
-    //             None,
-    //             Some("this is a formula".to_string()),
-    //             vec![Footnote {
-    //                 content: "This is a footnote for formula.".to_string(),
-    //                 locate: 17,
-    //             }],
-    //         )?
-    //         .make("C:\\Users\\Kikki\\Desktop\\test.xhtml");
-    //     assert!(content.is_ok());
-    //     Ok(())
-    // }
-
     mod block_builder_tests {
         use std::path::PathBuf;
 
         use crate::{
             builder::content::{Block, BlockBuilder},
-            error::EpubBuilderError,
+            error::{EpubBuilderError, EpubError},
             types::{BlockType, Footnote},
         };
 
@@ -1811,7 +1612,7 @@ mod tests {
             let mut builder = BlockBuilder::new(BlockType::Text);
             builder.set_content("Hello, World!");
 
-            let block = builder.build();
+            let block = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -1828,7 +1629,7 @@ mod tests {
         fn test_create_text_block_missing_content() {
             let builder = BlockBuilder::new(BlockType::Text);
 
-            let block = builder.build();
+            let block: Result<Block, EpubError> = builder.try_into();
             assert!(block.is_err());
 
             let result = block.unwrap_err();
@@ -1847,7 +1648,7 @@ mod tests {
             let mut builder = BlockBuilder::new(BlockType::Quote);
             builder.set_content("To be or not to be");
 
-            let block = builder.build();
+            let block: Result<Block, EpubError> = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -1865,7 +1666,7 @@ mod tests {
             let mut builder = BlockBuilder::new(BlockType::Title);
             builder.set_content("Chapter 1").set_title_level(2);
 
-            let block = builder.build();
+            let block: Result<Block, EpubError> = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -1884,7 +1685,7 @@ mod tests {
             let mut builder = BlockBuilder::new(BlockType::Title);
             builder.set_content("Chapter 1").set_title_level(10);
 
-            let result = builder.build();
+            let result: Result<Block, EpubError> = builder.try_into();
             assert!(result.is_err());
 
             let result = result.unwrap_err();
@@ -1892,7 +1693,7 @@ mod tests {
                 result,
                 EpubBuilderError::MissingNecessaryBlockData {
                     block_type: "Title".to_string(),
-                    missing_data: "'content' or 'level'".to_string(),
+                    missing_data: "'level'".to_string(),
                 }
                 .into()
             );
@@ -1908,7 +1709,7 @@ mod tests {
                 .set_alt("Test Image")
                 .set_caption("A test image");
 
-            let block = builder.build();
+            let block: Result<Block, EpubError> = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -1927,7 +1728,7 @@ mod tests {
         fn test_create_image_block_missing_url() {
             let builder = BlockBuilder::new(BlockType::Image);
 
-            let block = builder.build();
+            let block: Result<Block, EpubError> = builder.try_into();
             assert!(block.is_err());
 
             let result = block.unwrap_err();
@@ -1951,7 +1752,7 @@ mod tests {
                 .set_fallback("Audio not supported")
                 .set_caption("Background music");
 
-            let block = builder.build();
+            let block = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -2034,7 +1835,7 @@ mod tests {
                 .set_fallback("Video not supported")
                 .set_caption("Demo video");
 
-            let block = builder.build();
+            let block = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -2057,7 +1858,7 @@ mod tests {
                 .set_mathml_element(mathml_content)
                 .set_caption("Simple equation");
 
-            let block = builder.build();
+            let block = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -2088,7 +1889,7 @@ mod tests {
                 .set_fallback_image(img_path.clone())
                 .unwrap();
 
-            let block = builder.build();
+            let block = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
@@ -2117,59 +1918,13 @@ mod tests {
 
             builder.add_footnote(note1).add_footnote(note2);
 
-            let block = builder.build();
+            let block = builder.try_into();
             assert!(block.is_ok());
 
             let block = block.unwrap();
             match block {
                 Block::Text { footnotes, .. } => {
                     assert_eq!(footnotes.len(), 2);
-                }
-                _ => unreachable!(),
-            }
-        }
-
-        #[test]
-        fn test_remove_last_footnote() {
-            let mut builder = BlockBuilder::new(BlockType::Text);
-            builder.set_content("This is a test");
-
-            builder.add_footnote(Footnote { locate: 5, content: "Note 1".to_string() });
-            builder.add_footnote(Footnote {
-                locate: 10,
-                content: "Note 2".to_string(),
-            });
-            builder.remove_last_footnote();
-
-            let block = builder.build();
-            assert!(block.is_ok());
-
-            let block = block.unwrap();
-            match block {
-                Block::Text { footnotes, .. } => {
-                    assert_eq!(footnotes.len(), 1);
-                    assert!(footnotes[0].content == "Note 1");
-                }
-                _ => unreachable!(),
-            }
-        }
-
-        #[test]
-        fn test_clear_footnotes() {
-            let mut builder = BlockBuilder::new(BlockType::Text);
-            builder.set_content("This is a test");
-
-            builder.add_footnote(Footnote { locate: 5, content: "Note".to_string() });
-
-            builder.clear_footnotes();
-
-            let block = builder.build();
-            assert!(block.is_ok());
-
-            let block = block.unwrap();
-            match block {
-                Block::Text { footnotes, .. } => {
-                    assert!(footnotes.is_empty());
                 }
                 _ => unreachable!(),
             }
@@ -2186,7 +1941,7 @@ mod tests {
                 content: "Invalid footnote".to_string(),
             });
 
-            let result = builder.build();
+            let result: Result<Block, EpubError> = builder.try_into();
             assert!(result.is_err());
 
             let result = result.unwrap_err();
@@ -2204,7 +1959,7 @@ mod tests {
 
             builder.add_footnote(Footnote { locate: 1, content: "Note".to_string() });
 
-            let result = builder.build();
+            let result: Result<Block, EpubError> = builder.try_into();
             assert!(result.is_err());
 
             let result = result.unwrap_err();
@@ -2219,7 +1974,7 @@ mod tests {
         use std::{env, fs, path::PathBuf};
 
         use crate::{
-            builder::content::{Block, ContentBuilder},
+            builder::content::ContentBuilder,
             types::{ColorScheme, Footnote, PageLayout, TextAlign, TextStyle},
             utils::local_time,
         };
@@ -2379,53 +2134,6 @@ mod tests {
         }
 
         #[test]
-        fn test_remove_last_block() {
-            let mut builder = ContentBuilder::new("chapter1", "en").unwrap();
-
-            builder.add_text_block("First block", vec![]).unwrap();
-            builder.add_text_block("Second block", vec![]).unwrap();
-            assert_eq!(builder.blocks.len(), 2);
-
-            builder.remove_last_block();
-            assert_eq!(builder.blocks.len(), 1);
-        }
-
-        #[test]
-        fn test_take_last_block() {
-            let mut builder = ContentBuilder::new("chapter1", "en").unwrap();
-
-            builder.add_text_block("Block content", vec![]).unwrap();
-
-            let block = builder.take_last_block();
-            assert!(block.is_some());
-
-            let block = block.unwrap();
-            match block {
-                Block::Text { content, .. } => {
-                    assert_eq!(content, "Block content");
-                }
-                _ => unreachable!(),
-            }
-
-            let block2 = builder.take_last_block();
-            assert!(block2.is_none());
-        }
-
-        #[test]
-        fn test_clear_blocks() {
-            let mut builder = ContentBuilder::new("chapter1", "en").unwrap();
-
-            builder.add_text_block("Block 1", vec![]).unwrap();
-            builder.add_text_block("Block 2", vec![]).unwrap();
-            assert_eq!(builder.blocks.len(), 2);
-
-            builder.clear_blocks();
-
-            let block = builder.take_last_block();
-            assert!(block.is_none());
-        }
-
-        #[test]
         fn test_make_content_document() {
             let temp_dir = env::temp_dir().join(local_time());
             assert!(fs::create_dir_all(&temp_dir).is_ok());
@@ -2554,48 +2262,6 @@ mod tests {
             assert!(builder.add_css_file(css_path2).is_ok());
 
             assert_eq!(builder.css_files.len(), 2);
-
-            assert!(fs::remove_dir_all(&temp_dir).is_ok());
-        }
-
-        #[test]
-        fn test_remove_last_css_file() {
-            let builder = ContentBuilder::new("chapter1", "en");
-            assert!(builder.is_ok());
-
-            let mut builder = builder.unwrap();
-            builder
-                .add_css_file(PathBuf::from("./test_case/style.css"))
-                .unwrap();
-            assert_eq!(builder.css_files.len(), 1);
-
-            builder.remove_last_css_file();
-            assert!(builder.css_files.is_empty());
-
-            builder.remove_last_css_file();
-            assert!(builder.css_files.is_empty());
-        }
-
-        #[test]
-        fn test_clear_css_files() {
-            let temp_dir = env::temp_dir().join(local_time());
-            assert!(fs::create_dir_all(&temp_dir).is_ok());
-
-            let css_path1 = temp_dir.join("style1.css");
-            let css_path2 = temp_dir.join("style2.css");
-            assert!(fs::write(&css_path1, "body { color: red; }").is_ok());
-            assert!(fs::write(&css_path2, "p { font-size: 16px; }").is_ok());
-
-            let builder = ContentBuilder::new("chapter1", "en");
-            assert!(builder.is_ok());
-
-            let mut builder = builder.unwrap();
-            assert!(builder.add_css_file(css_path1).is_ok());
-            assert!(builder.add_css_file(css_path2).is_ok());
-            assert_eq!(builder.css_files.len(), 2);
-
-            builder.clear_css_files();
-            assert!(builder.css_files.is_empty());
 
             assert!(fs::remove_dir_all(&temp_dir).is_ok());
         }

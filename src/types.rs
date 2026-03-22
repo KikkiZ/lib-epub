@@ -14,7 +14,7 @@
 //! Many of these types implement a builder pattern for easier construction when the
 //! `builder` feature is enabled. See individual type documentation for details.
 
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 #[cfg(feature = "builder")]
 use crate::{
@@ -802,7 +802,7 @@ impl PartialOrd for Footnote {
 
 /// Represents the type of a block element in the content document
 #[cfg(feature = "content-builder")]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum BlockType {
     /// A text paragraph block
     ///
@@ -840,6 +840,20 @@ pub enum BlockType {
     /// Contains mathematical notation using MathML markup for
     /// proper mathematical typesetting.
     MathML,
+}
+
+impl Display for BlockType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockType::Text => write!(f, "Text"),
+            BlockType::Quote => write!(f, "Quote"),
+            BlockType::Title => write!(f, "Title"),
+            BlockType::Image => write!(f, "Image"),
+            BlockType::Audio => write!(f, "Audio"),
+            BlockType::Video => write!(f, "Video"),
+            BlockType::MathML => write!(f, "MathML"),
+        }
+    }
 }
 
 /// Configuration options for document styling
