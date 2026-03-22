@@ -36,7 +36,9 @@
 //!
 //! ## Notes
 //!
-//! - Requires `content-builder` functionality to use this module.
+//! - Requires `content-builder` feature to use this module.
+//! - All resource files (images, audio, video) must exist on the local file system.
+//! - The builder automatically creates a temporary directory for storing files during construction.
 
 use std::{
     collections::HashMap,
@@ -225,6 +227,12 @@ pub enum Block {
     ///         {{ mathml.caption }}
     ///     </figcaption>
     /// </figure>
+    /// ```
+    ///
+    /// ## Notes
+    /// - The MathML markup is inserted directly without validation. Users must ensure
+    ///   the MathML is well-formed.
+    /// - The fallback image is displayed when the reading system doesn't support MathML.
     #[non_exhaustive]
     MathML {
         /// MathML element raw data

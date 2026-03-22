@@ -20,9 +20,10 @@ pub enum EpubError {
     #[error("Archive error: {source}")]
     ArchiveError { source: zip::result::ZipError },
 
-    /// Data Decoding Error - Null dataw
+    /// Data Decoding Error - Null data
     ///
-    /// This error occurs when trying to decode an empty stream.
+    /// This error occurs when trying to decode an empty stream or when the data
+    /// is too short to determine the encoding format.
     #[error("Decode error: The data is empty.")]
     EmptyDataError,
 
@@ -32,9 +33,9 @@ pub enum EpubError {
 
     /// XML parsing failure error
     ///
-    /// This error usually only occurs when there is an exception in the XML parsing process,
-    /// the event listener ends abnormally, resulting in the root node not being initialized.
-    /// This exception may be caused by an incorrect XML file.
+    /// This error occurs when an exception happens during the XML parsing process,
+    /// such as malformed XML syntax, unclosed tags, or invalid characters.
+    /// The parser uses the `quick_xml` library for efficient XML parsing.
     #[error(
         "Failed parsing XML error: Unknown problems occurred during XML parsing, causing parsing failure."
     )]

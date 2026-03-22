@@ -19,19 +19,19 @@
 //!
 //! ### Read EPUB Files
 //!
-//! ```rust, ignore
+//! ```rust, no_run
 //! # use lib_epub::epub::EpubDoc;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), lib_epub::error::EpubError> {
 //! // Open EPUB file
-//! let doc = EpubDoc::new("path/to/epub/file.epub")?;
+//! let mut doc = EpubDoc::new("path/to/epub/file.epub")?;
 //!
 //! // Get metadata
 //! println!("Title: {:?}", doc.get_title());
-//! println!("Creator: {:?}", doc.get_metadata_value("creator")?);
+//! println!("Creator: {:?}", doc.get_metadata_value("creator"));
 //!
 //! // Read content
-//! let (_content, _mime) = doc.spine_current()?;
-//! let (_content, _mime) = doc.next_spine()?;
+//! if let Some((_content, _mime)) = doc.spine_current() { todo!() };
+//! if let Some((_content, _mime)) = doc.spine_next() { todo!() };
 //!
 //! # Ok(())
 //! # }
@@ -48,6 +48,9 @@
 //! - `content-builder`: Enable `lib_epub::builder::content`, provides structs and trait
 //!   related to building EPUB content documents. Enabling this feature will turn on
 //!   the `builder` feature by default.
+//! - `no-indexmap`: Remove the dependency on the external crate `IndexMap`. This dependency
+//!   is primarily used to ensure the order of resources in the manifest, as recommended
+//!   by the EPUB specification.
 
 pub(crate) mod utils;
 
