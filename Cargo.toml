@@ -7,7 +7,7 @@ license = "MIT"
 keywords = ["ebook", "epub", "library"]
 exclude = ["/test_case"]
 
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 
@@ -25,7 +25,7 @@ sha1 = "0.10.6"
 # sha2 = "0.10.9"
 thiserror = "2.0.18"
 walkdir = { version = "2.5.0", optional = true }
-zip = { version = "7.3.0", default-features = false, features = ["deflate"] }
+zip = { version = "8.0.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 flate2 = "1.1.9"

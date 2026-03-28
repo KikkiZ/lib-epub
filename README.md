@@ -25,7 +25,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-lib-epub = "0.1.0"
+lib-epub = "0.2.1"
 ```
 
 ## Quick Start
@@ -94,7 +94,7 @@ fn main() -> Result<(), EpubError> {
         .add(NavPoint::new("label"));
 
     builder.build("output.epub")?;
-    
+
     Ok(())
 }
 ```
@@ -111,12 +111,13 @@ fn main() -> Result<(), lib_epub::error::EpubError> {
     let mut block_builder = BlockBuilder::new(BlockType::Title);
     block_builder
         .set_content("This is a title")
+        .set_title_level(2)
         .add_footnote(Footnote {
             locate: 15,
             content: "This is a footnote.".to_string(),
         });
 
-    let block = block_builder.build()?;
+    let block = block_builder.try_into()?;
 
     let mut builder = ContentBuilder::new("chapter1", "zh-CN")?;
     builder.set_title("My Chapter")
