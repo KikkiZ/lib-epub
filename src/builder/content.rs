@@ -1011,10 +1011,10 @@ pub struct ContentBuilder {
     /// and the other content document will be ignored.
     pub id: String,
 
-    blocks: Vec<Block>,
-    language: String,
-    title: String,
-    styles: StyleOptions,
+    pub(crate) blocks: Vec<Block>,
+    pub(crate) language: String,
+    pub(crate) title: String,
+    pub(crate) styles: StyleOptions,
 
     pub(crate) temp_dir: PathBuf,
     pub(crate) css_files: Vec<PathBuf>,
