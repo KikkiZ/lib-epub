@@ -39,7 +39,7 @@ use crate::{
     error::EpubError,
     types::{
         EncryptionData, EpubVersion, ManifestItem, MetadataItem, MetadataLinkItem,
-        MetadataRefinement, NavPoint, SpineItem,
+        MetadataRefinement, MetadataSheet, NavPoint, SpineItem,
     },
     utils::{
         DecodeBytes, NormalizeWhitespace, XmlElement, XmlReader, adobe_font_dencryption,
@@ -706,6 +706,90 @@ impl<R: Read + Seek> EpubDoc<R> {
         self.get_metadata_value("identifier").expect(
             "missing required 'identifier' metadata which is required by the EPUB specification",
         )
+    }
+
+    /// Retrieves a unified metadata sheet from the EPUB publication
+    ///
+    /// This function consolidates all metadata from the EPUB into a single `MetadataSheet`
+    /// structure, providing a simplified interface for metadata access. It handles both
+    /// EPUB 2 and EPUB 3 metadata formats, including refinements from EPUB 3.
+    ///
+    /// ## Return
+    /// - `MetadataSheet`: A populated metadata sheet containing all publication metadata
+    ///
+    /// ## Notes
+    /// - Multi-value metadata (title, creator, etc.) are stored in Vec fields in order
+    /// - Date metadata extracts event type from refinements (e.g., "publication", "modification")
+    /// - Identifier metadata uses item IDs as keys in the HashMap
+    pub fn get_metadata_sheet(&self) -> MetadataSheet {
+        let mut sheet = MetadataSheet::new();
+        for item in &self.metadata {
+            let value = item.value.clone();
+
+            match item.property.as_str() {
+                "title" => {
+                    sheet.title.push(value);
+                }
+                "creator" => {
+                    sheet.creator.push(value);
+                }
+                "contributor" => {
+                    sheet.contributor.push(value);
+                }
+                "subject" => {
+                    sheet.subject.push(value);
+                }
+                "language" => {
+                    sheet.language.push(value);
+                }
+                "relation" => {
+                    sheet.relation.push(value);
+                }
+                "date" => {
+                    let event = item
+                        .refined
+                        .iter()
+                        .filter_map(|refine| {
+                            if refine.property.eq("event") {
+                                Some(refine.value.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .next()
+                        .unwrap_or_default();
+                    sheet.date.insert(value, event);
+                }
+                "identifier" => {
+                    let id = item.id.clone().unwrap_or_default();
+                    sheet.identifier.insert(id, value);
+                }
+                "description" => {
+                    sheet.description = value;
+                }
+                "format" => {
+                    sheet.format = value;
+                }
+                "publisher" => {
+                    sheet.publisher = value;
+                }
+                "rights" => {
+                    sheet.rights = value;
+                }
+                "source" => {
+                    sheet.source = value;
+                }
+                "ccoverage" => {
+                    sheet.coverage = value;
+                }
+                "type" => {
+                    sheet.epub_type = value;
+                }
+                _ => {}
+            };
+        }
+
+        sheet
     }
 
     /// Retrieve resource data by resource ID

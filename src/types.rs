@@ -14,7 +14,7 @@
 //! Many of these types implement a builder pattern for easier construction when the
 //! `builder` feature is enabled. See individual type documentation for details.
 
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 #[cfg(feature = "builder")]
 use crate::{
@@ -325,6 +325,287 @@ pub struct MetadataLinkItem {
     /// In EPUB 3.0, links can refine other metadata items. This field contains the ID
     /// of the metadata item that this link refines, prefixed with "#".
     pub refines: Option<String>,
+}
+
+/// A unified metadata sheet for EPUB publications
+///
+/// This struct provides a simplified, high-level interface for accessing EPUB metadata.
+/// It consolidates metadata from both EPUB 2 and EPUB 3 specifications into a single
+/// convenient structure, with separate storage for multi-value fields and single-value fields.
+#[derive(Debug, Default)]
+pub struct MetadataSheet {
+    /// Contributors to the publication (e.g., editors, translators)
+    pub contributor: Vec<String>,
+    /// Primary creators/authors of the publication
+    pub creator: Vec<String>,
+    /// Date information with optional event types (e.g., publication, creation)
+    pub date: HashMap<String, String>,
+    /// Unique identifiers with their assigned IDs as keys
+    pub identifier: HashMap<String, String>,
+    /// Language codes for the publication content
+    pub language: Vec<String>,
+    /// References to related resources
+    pub relation: Vec<String>,
+    /// Subject keywords or topics
+    pub subject: Vec<String>,
+    /// Title(s) of the publication
+    pub title: Vec<String>,
+
+    /// Spatial or temporal coverage of the publication
+    pub coverage: String,
+    /// Description or abstract of the publication
+    pub description: String,
+    /// Physical or digital format of the publication
+    pub format: String,
+    /// Publisher information
+    pub publisher: String,
+    /// Copyright and licensing rights
+    pub rights: String,
+    /// Reference to the source publication
+    pub source: String,
+    /// EPUB-specific type identifier
+    pub epub_type: String,
+}
+
+impl MetadataSheet {
+    /// Creates a new MetadataSheet instance
+    pub fn new() -> Self {
+        Self {
+            contributor: Vec::new(),
+            creator: Vec::new(),
+            date: HashMap::new(),
+            identifier: HashMap::new(),
+            language: Vec::new(),
+            relation: Vec::new(),
+            subject: Vec::new(),
+            title: Vec::new(),
+
+            coverage: String::new(),
+            description: String::new(),
+            format: String::new(),
+            publisher: String::new(),
+            rights: String::new(),
+            source: String::new(),
+            epub_type: String::new(),
+        }
+    }
+}
+
+#[cfg(feature = "builder")]
+impl MetadataSheet {
+    /// Appends a contributor to the metadata
+    pub fn append_contributor(&mut self, contributor: impl Into<String>) -> &mut Self {
+        self.contributor.push(contributor.into());
+        self
+    }
+
+    /// Appends a creator to the metadata
+    pub fn append_creator(&mut self, creator: impl Into<String>) -> &mut Self {
+        self.creator.push(creator.into());
+        self
+    }
+
+    /// Appends a language to the metadata
+    pub fn append_language(&mut self, language: impl Into<String>) -> &mut Self {
+        self.language.push(language.into());
+        self
+    }
+
+    /// Appends a relation to the metadata
+    pub fn append_relation(&mut self, relation: impl Into<String>) -> &mut Self {
+        self.relation.push(relation.into());
+        self
+    }
+
+    /// Appends a subject to the metadata
+    pub fn append_subject(&mut self, subject: impl Into<String>) -> &mut Self {
+        self.subject.push(subject.into());
+        self
+    }
+
+    /// Appends a title to the metadata
+    pub fn append_title(&mut self, title: impl Into<String>) -> &mut Self {
+        self.title.push(title.into());
+        self
+    }
+
+    /// Sets a date value with optional event type
+    ///
+    /// Parameters:
+    /// - `date`: The date value (used as key to allow multiple dates)
+    /// - `event`: Optional event type (e.g., "publication", "creation", "modification")
+    ///
+    /// Note: Multiple dates can be stored. The date string is used as the key,
+    /// and the event type (if any) is stored as the value.
+    pub fn append_date(&mut self, date: impl Into<String>, event: impl Into<String>) -> &mut Self {
+        self.date.insert(date.into(), event.into());
+        self
+    }
+
+    /// Sets an identifier with id (e.g., "book-id", "isbn-id")
+    pub fn append_identifier(
+        &mut self,
+        id: impl Into<String>,
+        value: impl Into<String>,
+    ) -> &mut Self {
+        self.identifier.insert(id.into(), value.into());
+        self
+    }
+
+    /// Sets coverage
+    pub fn with_coverage(&mut self, coverage: impl Into<String>) -> &mut Self {
+        self.coverage = coverage.into();
+        self
+    }
+
+    /// Sets description
+    pub fn with_description(&mut self, description: impl Into<String>) -> &mut Self {
+        self.description = description.into();
+        self
+    }
+
+    /// Sets format
+    pub fn with_format(&mut self, format: impl Into<String>) -> &mut Self {
+        self.format = format.into();
+        self
+    }
+
+    /// Sets publisher
+    pub fn with_publisher(&mut self, publisher: impl Into<String>) -> &mut Self {
+        self.publisher = publisher.into();
+        self
+    }
+
+    /// Sets rights
+    pub fn with_rights(&mut self, rights: impl Into<String>) -> &mut Self {
+        self.rights = rights.into();
+        self
+    }
+
+    /// Sets source
+    pub fn with_source(&mut self, source: impl Into<String>) -> &mut Self {
+        self.source = source.into();
+        self
+    }
+
+    /// Sets epub type
+    pub fn with_epub_type(&mut self, epub_type: impl Into<String>) -> &mut Self {
+        self.epub_type = epub_type.into();
+        self
+    }
+
+    /// Builds the Metadata instance (returns a clone)
+    pub fn build(&self) -> MetadataSheet {
+        MetadataSheet {
+            contributor: self.contributor.clone(),
+            creator: self.creator.clone(),
+            date: self.date.clone(),
+            identifier: self.identifier.clone(),
+            language: self.language.clone(),
+            relation: self.relation.clone(),
+            subject: self.subject.clone(),
+            title: self.title.clone(),
+            coverage: self.coverage.clone(),
+            description: self.description.clone(),
+            format: self.format.clone(),
+            publisher: self.publisher.clone(),
+            rights: self.rights.clone(),
+            source: self.source.clone(),
+            epub_type: self.epub_type.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "builder")]
+impl From<MetadataSheet> for Vec<MetadataItem> {
+    /// Converts a `MetadataSheet` into a `Vec<MetadataItem>` for EPUB use
+    ///
+    /// This conversion maps Dublin Core metadata fields from `MetadataSheet` to
+    /// the EPUB-compliant `MetadataItem` format. Each field in `MetadataSheet`
+    /// is converted to a corresponding `MetadataItem`.
+    fn from(sheet: MetadataSheet) -> Vec<MetadataItem> {
+        let mut items = Vec::new();
+
+        // Dublin Core Vector Fields - multiple values become separate MetadataItems
+
+        for title in &sheet.title {
+            items.push(MetadataItem::new("title", title));
+        }
+
+        for creator in &sheet.creator {
+            items.push(MetadataItem::new("creator", creator));
+        }
+
+        for contributor in &sheet.contributor {
+            items.push(MetadataItem::new("contributor", contributor));
+        }
+
+        for subject in &sheet.subject {
+            items.push(MetadataItem::new("subject", subject));
+        }
+
+        for language in &sheet.language {
+            items.push(MetadataItem::new("language", language));
+        }
+
+        for relation in &sheet.relation {
+            items.push(MetadataItem::new("relation", relation));
+        }
+
+        // Dublin Core HashMap Fields - date and identifier have key-value structure
+        // For date: key is used as refinement property "event", value is the date
+        // For identifier: key is used as the xml:id attribute
+        for (date, event) in &sheet.date {
+            let mut item = MetadataItem::new("date", date);
+            if !event.is_empty() {
+                let refinement_id = format!("date-{}", items.len());
+                item.id = Some(refinement_id.clone());
+                item.refined
+                    .push(MetadataRefinement::new(&refinement_id, "event", event));
+            }
+            items.push(item);
+        }
+
+        for (id, value) in &sheet.identifier {
+            let mut item = MetadataItem::new("identifier", value);
+            if !id.is_empty() {
+                item.id = Some(id.clone());
+            }
+            items.push(item);
+        }
+
+        // Dublin Core Scalar Fields - single-value fields
+
+        if !sheet.description.is_empty() {
+            items.push(MetadataItem::new("description", &sheet.description));
+        }
+
+        if !sheet.format.is_empty() {
+            items.push(MetadataItem::new("format", &sheet.format));
+        }
+
+        if !sheet.publisher.is_empty() {
+            items.push(MetadataItem::new("publisher", &sheet.publisher));
+        }
+
+        if !sheet.rights.is_empty() {
+            items.push(MetadataItem::new("rights", &sheet.rights));
+        }
+
+        if !sheet.source.is_empty() {
+            items.push(MetadataItem::new("source", &sheet.source));
+        }
+
+        if !sheet.coverage.is_empty() {
+            items.push(MetadataItem::new("coverage", &sheet.coverage));
+        }
+
+        if !sheet.epub_type.is_empty() {
+            items.push(MetadataItem::new("type", &sheet.epub_type));
+        }
+
+        items
+    }
 }
 
 /// Represents a resource item declared in the EPUB manifest

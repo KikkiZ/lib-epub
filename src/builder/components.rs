@@ -15,12 +15,10 @@ use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 
 #[cfg(feature = "content-builder")]
 use crate::builder::content::ContentBuilder;
-#[cfg(not(feature = "no-indexmap"))]
-use crate::types::ManifestItem;
 use crate::{
     builder::{XmlWriter, normalize_manifest_path, refine_mime_type},
     error::{EpubBuilderError, EpubError},
-    types::{MetadataItem, MetadataSheet, NavPoint, SpineItem},
+    types::{ManifestItem, MetadataItem, MetadataSheet, NavPoint, SpineItem},
     utils::ELEMENT_IN_DC_NAMESPACE,
 };
 
