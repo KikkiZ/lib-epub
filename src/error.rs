@@ -389,3 +389,128 @@ pub enum EpubBuilderError {
     #[error("Unable to analyze the file '{file_path}' type.")]
     UnknownFileFormat { file_path: String },
 }
+
+#[cfg(test)]
+mod from_trait_tests {
+    use zip::result::ZipError;
+
+    use std::io;
+
+    use super::*;
+
+    #[test]
+    fn test_from_zip_error() {
+        let zip_err = ZipError::FileNotFound;
+        let epub_err = zip_err.into();
+
+        match epub_err {
+            EpubError::ArchiveError { source } => {
+                assert!(matches!(source, ZipError::FileNotFound));
+            }
+            _ => panic!("Expected EpubError::ArchiveError"),
+        }
+    }
+
+    #[test]
+    fn test_from_quick_xml_error() {
+        let io_err = io::Error::new(io::ErrorKind::InvalidData, "xml parse error");
+        let xml_err = quick_xml::Error::Io(io_err.into());
+        let epub_err = xml_err.into();
+
+        match epub_err {
+            EpubError::QuickXmlError { source } => {
+                assert!(format!("{}", source).contains("xml parse error"));
+            }
+            _ => panic!("Expected EpubError::QuickXmlError"),
+        }
+    }
+
+    #[test]
+    fn test_from_io_error() {
+        let io_err = io::Error::new(io::ErrorKind::NotFound, "file not found");
+        let epub_err = io_err.into();
+
+        match epub_err {
+            EpubError::IOError { source } => {
+                assert_eq!(source.kind(), io::ErrorKind::NotFound);
+            }
+            _ => panic!("Expected EpubError::IOError"),
+        }
+    }
+
+    #[test]
+    fn test_from_utf8_error() {
+        let invalid_utf8 = vec![0x80, 0x81];
+        let utf8_err = String::from_utf8(invalid_utf8).unwrap_err();
+        let epub_err = utf8_err.into();
+
+        match epub_err {
+            EpubError::Utf8DecodeError { .. } => {}
+            _ => panic!("Expected EpubError::Utf8DecodeError"),
+        }
+    }
+
+    #[test]
+    fn test_from_utf16_error() {
+        let invalid_utf16 = vec![0xD800];
+        let utf16_err = String::from_utf16(&invalid_utf16).unwrap_err();
+        let epub_err = utf16_err.into();
+
+        match epub_err {
+            EpubError::Utf16DecodeError { .. } => {}
+            _ => panic!("Expected EpubError::Utf16DecodeError"),
+        }
+    }
+
+    #[test]
+    fn test_from_poison_error() {
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        let mutex = Arc::new(Mutex::new(42));
+
+        let mutex_clone = Arc::clone(&mutex);
+        let handle = thread::spawn(move || {
+            let _guard = mutex_clone.lock().unwrap();
+            panic!("panic to poison mutex");
+        });
+
+        let _ = handle.join();
+
+        let result = mutex.lock();
+        assert!(result.is_err());
+
+        if let Err(poison_err) = result {
+            let epub_err: EpubError = poison_err.into();
+            assert!(matches!(epub_err, EpubError::MutexError));
+        }
+    }
+
+    #[cfg(feature = "builder")]
+    #[test]
+    fn test_from_epub_builder_error() {
+        let builder_err = EpubBuilderError::MissingRootfile;
+        let epub_err: EpubError = builder_err.into();
+
+        match epub_err {
+            EpubError::EpubBuilderError { .. } => {}
+            _ => panic!("Expected EpubError::EpubBuilderError"),
+        }
+    }
+
+    #[cfg(feature = "builder")]
+    #[test]
+    fn test_from_walkdir_error() {
+        let walk_err = walkdir::WalkDir::new("nonexistent_path_12345")
+            .into_iter()
+            .next()
+            .unwrap()
+            .unwrap_err();
+        let epub_err: EpubError = walk_err.into();
+
+        match epub_err {
+            EpubError::WalkDirError { .. } => {}
+            _ => panic!("Expected EpubError::WalkDirError"),
+        }
+    }
+}

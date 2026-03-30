@@ -2219,6 +2219,238 @@ mod tests {
             }
         }
 
+        mod metadata_sheet {
+            use crate::types::{MetadataItem, MetadataSheet};
+
+            #[test]
+            fn test_metadata_sheet_new() {
+                let sheet = MetadataSheet::new();
+
+                assert!(sheet.contributor.is_empty());
+                assert!(sheet.creator.is_empty());
+                assert!(sheet.date.is_empty());
+                assert!(sheet.identifier.is_empty());
+                assert!(sheet.language.is_empty());
+                assert!(sheet.relation.is_empty());
+                assert!(sheet.subject.is_empty());
+                assert!(sheet.title.is_empty());
+
+                assert!(sheet.coverage.is_empty());
+                assert!(sheet.description.is_empty());
+                assert!(sheet.format.is_empty());
+                assert!(sheet.publisher.is_empty());
+                assert!(sheet.rights.is_empty());
+                assert!(sheet.source.is_empty());
+                assert!(sheet.epub_type.is_empty());
+            }
+
+            #[test]
+            fn test_metadata_sheet_append_vec_fields() {
+                let mut sheet = MetadataSheet::new();
+
+                sheet
+                    .append_title("Test Book")
+                    .append_creator("John Doe")
+                    .append_creator("Jane Smith")
+                    .append_contributor("Editor One")
+                    .append_language("en")
+                    .append_language("zh-CN")
+                    .append_subject("Fiction")
+                    .append_subject("Drama")
+                    .append_relation("prequel");
+
+                assert_eq!(sheet.title.len(), 1);
+                assert_eq!(sheet.title[0], "Test Book");
+
+                assert_eq!(sheet.creator.len(), 2);
+                assert_eq!(sheet.creator[0], "John Doe");
+                assert_eq!(sheet.creator[1], "Jane Smith");
+
+                assert_eq!(sheet.contributor.len(), 1);
+                assert_eq!(sheet.contributor[0], "Editor One");
+
+                assert_eq!(sheet.language.len(), 2);
+                assert_eq!(sheet.language[0], "en");
+                assert_eq!(sheet.language[1], "zh-CN");
+
+                assert_eq!(sheet.subject.len(), 2);
+                assert_eq!(sheet.subject[0], "Fiction");
+                assert_eq!(sheet.subject[1], "Drama");
+
+                assert_eq!(sheet.relation.len(), 1);
+                assert_eq!(sheet.relation[0], "prequel");
+            }
+
+            #[test]
+            fn test_metadata_sheet_append_date_and_identifier() {
+                let mut sheet = MetadataSheet::new();
+
+                sheet
+                    .append_date("2024-01-15", "publication")
+                    .append_date("2024-01-10", "creation")
+                    .append_identifier("book-id", "urn:isbn:1234567890")
+                    .append_identifier("uuid-id", "urn:uuid:12345678-1234-1234-1234-123456789012");
+
+                assert_eq!(sheet.date.len(), 2);
+                assert_eq!(
+                    sheet.date.get("2024-01-15"),
+                    Some(&"publication".to_string())
+                );
+                assert_eq!(sheet.date.get("2024-01-10"), Some(&"creation".to_string()));
+
+                assert_eq!(sheet.identifier.len(), 2);
+                assert_eq!(
+                    sheet.identifier.get("book-id"),
+                    Some(&"urn:isbn:1234567890".to_string())
+                );
+                assert_eq!(
+                    sheet.identifier.get("uuid-id"),
+                    Some(&"urn:uuid:12345678-1234-1234-1234-123456789012".to_string())
+                );
+            }
+
+            #[test]
+            fn test_metadata_sheet_with_string_fields() {
+                let mut sheet = MetadataSheet::new();
+
+                sheet
+                    .with_coverage("Spatial coverage")
+                    .with_description("A test book description")
+                    .with_format("application/epub+zip")
+                    .with_publisher("Test Publisher")
+                    .with_rights("Copyright 2024")
+                    .with_source("Original source")
+                    .with_epub_type("buku");
+
+                assert_eq!(sheet.coverage, "Spatial coverage");
+                assert_eq!(sheet.description, "A test book description");
+                assert_eq!(sheet.format, "application/epub+zip");
+                assert_eq!(sheet.publisher, "Test Publisher");
+                assert_eq!(sheet.rights, "Copyright 2024");
+                assert_eq!(sheet.source, "Original source");
+                assert_eq!(sheet.epub_type, "buku");
+            }
+
+            #[test]
+            fn test_metadata_sheet_builder_chaining() {
+                let mut sheet = MetadataSheet::new();
+
+                sheet
+                    .append_title("Chained Book")
+                    .append_creator("Chained Author")
+                    .append_date("2024-01-01", "")
+                    .append_identifier("id-1", "test-id")
+                    .with_publisher("Chained Publisher")
+                    .with_description("Chained description");
+
+                assert_eq!(sheet.title.len(), 1);
+                assert_eq!(sheet.title[0], "Chained Book");
+
+                assert_eq!(sheet.creator.len(), 1);
+                assert_eq!(sheet.creator[0], "Chained Author");
+
+                assert_eq!(sheet.date.len(), 1);
+                assert_eq!(sheet.identifier.len(), 1);
+                assert_eq!(sheet.publisher, "Chained Publisher");
+                assert_eq!(sheet.description, "Chained description");
+            }
+
+            #[test]
+            fn test_metadata_sheet_build() {
+                let mut sheet = MetadataSheet::new();
+                sheet
+                    .append_title("Original Title")
+                    .with_publisher("Original Publisher");
+
+                let built = sheet.build();
+
+                assert_eq!(built.title.len(), 1);
+                assert_eq!(built.title[0], "Original Title");
+                assert_eq!(built.publisher, "Original Publisher");
+
+                sheet.append_title("New Title");
+                sheet.with_publisher("New Publisher");
+
+                assert_eq!(sheet.title.len(), 2);
+                assert_eq!(built.title.len(), 1);
+                assert_eq!(built.publisher, "Original Publisher");
+            }
+
+            #[test]
+            fn test_metadata_sheet_into_metadata_items() {
+                let mut sheet = MetadataSheet::new();
+                sheet
+                    .append_title("Test Title")
+                    .append_creator("Test Creator")
+                    .with_description("Test Description")
+                    .with_publisher("Test Publisher");
+
+                let items: Vec<MetadataItem> = sheet.into();
+
+                assert_eq!(items.len(), 4);
+
+                assert!(
+                    items
+                        .iter()
+                        .any(|i| i.property == "title" && i.value == "Test Title")
+                );
+
+                assert!(
+                    items
+                        .iter()
+                        .any(|i| i.property == "creator" && i.value == "Test Creator")
+                );
+
+                assert!(
+                    items
+                        .iter()
+                        .any(|i| i.property == "description" && i.value == "Test Description")
+                );
+
+                assert!(
+                    items
+                        .iter()
+                        .any(|i| i.property == "publisher" && i.value == "Test Publisher")
+                );
+            }
+
+            #[test]
+            fn test_metadata_sheet_into_metadata_items_with_date_and_identifier() {
+                let mut sheet = MetadataSheet::new();
+                sheet
+                    .append_date("2024-01-15", "publication")
+                    .append_identifier("book-id", "urn:isbn:9876543210");
+
+                let items: Vec<MetadataItem> = sheet.into();
+
+                assert_eq!(items.len(), 2);
+
+                let date_item = items.iter().find(|i| i.property == "date").unwrap();
+
+                assert_eq!(date_item.value, "2024-01-15");
+                assert!(date_item.id.is_some());
+                assert_eq!(date_item.refined.len(), 1);
+                assert_eq!(date_item.refined[0].property, "event");
+                assert_eq!(date_item.refined[0].value, "publication");
+
+                let id_item = items.iter().find(|i| i.property == "identifier").unwrap();
+
+                assert_eq!(id_item.value, "urn:isbn:9876543210");
+                assert_eq!(id_item.id, Some("book-id".to_string()));
+            }
+
+            #[test]
+            fn test_metadata_sheet_into_metadata_items_ignores_empty_fields() {
+                let mut sheet = MetadataSheet::new();
+                sheet.append_title("Valid Title").with_description(""); // Empty string should be ignored
+
+                let items: Vec<MetadataItem> = sheet.into();
+
+                assert_eq!(items.len(), 1);
+                assert_eq!(items[0].property, "title");
+            }
+        }
+
         mod navpoint {
 
             use std::path::PathBuf;

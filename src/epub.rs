@@ -2726,4 +2726,150 @@ mod tests {
         };
         assert!(!EpubDoc::<BufReader<File>>::is_outside_error(&missing_attr));
     }
+
+    mod metadata_sheet_tests {
+        use crate::epub::EpubDoc;
+        use std::path::Path;
+
+        #[test]
+        fn test_get_metadata_sheet_basic_fields() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let sheet = doc.get_metadata_sheet();
+
+            assert_eq!(sheet.title.len(), 1);
+            assert_eq!(sheet.title[0], "EPUB 3.3");
+
+            assert_eq!(sheet.language.len(), 1);
+            assert_eq!(sheet.language[0], "en-us");
+
+            assert_eq!(sheet.publisher, "World Wide Web Consortium");
+
+            assert_eq!(
+                sheet.rights,
+                "https://www.w3.org/Consortium/Legal/2015/doc-license"
+            );
+        }
+
+        #[test]
+        fn test_get_metadata_sheet_multiple_creators() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let sheet = doc.get_metadata_sheet();
+
+            assert_eq!(sheet.creator.len(), 3);
+            assert_eq!(sheet.creator[0], "Matt Garrish, DAISY Consortium");
+            assert_eq!(sheet.creator[1], "Ivan Herman, W3C");
+            assert_eq!(sheet.creator[2], "Dave Cramer, Invited Expert");
+        }
+
+        #[test]
+        fn test_get_metadata_sheet_multiple_subjects() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let sheet = doc.get_metadata_sheet();
+
+            assert_eq!(sheet.subject.len(), 2);
+            assert_eq!(sheet.subject[0], "Information systems~World Wide Web");
+            assert_eq!(
+                sheet.subject[1],
+                "General and reference~Computing standards, RFCs and guidelines"
+            );
+        }
+
+        #[test]
+        fn test_get_metadata_sheet_identifier_with_id() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let sheet = doc.get_metadata_sheet();
+
+            assert!(sheet.identifier.contains_key("pub-id"));
+            assert_eq!(
+                sheet.identifier.get("pub-id"),
+                Some(&"https://www.w3.org/TR/epub-33/".to_string())
+            );
+        }
+
+        #[test]
+        fn test_get_metadata_sheet_missing_scalar_fields() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let sheet = doc.get_metadata_sheet();
+
+            assert!(sheet.coverage.is_empty());
+            assert!(sheet.description.is_empty());
+            assert!(sheet.format.is_empty());
+            assert!(sheet.source.is_empty());
+            assert!(sheet.epub_type.is_empty());
+            assert!(sheet.contributor.is_empty());
+            assert!(sheet.relation.is_empty());
+        }
+
+        #[test]
+        fn test_get_metadata_sheet_title_refinement_via_get_metadata() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let title_metadata = doc.get_metadata("title");
+            assert!(title_metadata.is_some());
+
+            let title_metadata = title_metadata.unwrap();
+            assert_eq!(title_metadata.len(), 1);
+            assert_eq!(title_metadata[0].refined.len(), 1);
+            assert_eq!(title_metadata[0].refined[0].property, "title-type");
+            assert_eq!(title_metadata[0].refined[0].value, "main");
+
+            let sheet = doc.get_metadata_sheet();
+            assert_eq!(sheet.title.len(), 1);
+            assert_eq!(sheet.title[0], "EPUB 3.3");
+        }
+
+        #[test]
+        fn test_get_metadata_sheet_ignores_unknown_properties() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let sheet = doc.get_metadata_sheet();
+
+            assert_eq!(sheet.title.len(), 1);
+            assert_eq!(sheet.creator.len(), 3);
+            assert_eq!(sheet.subject.len(), 2);
+        }
+
+        #[test]
+        fn test_get_metadata_sheet_idempotent() {
+            let epub_file = Path::new("./test_case/epub-33.epub");
+            let doc = EpubDoc::new(epub_file);
+            assert!(doc.is_ok());
+
+            let doc = doc.unwrap();
+            let sheet1 = doc.get_metadata_sheet();
+            let sheet2 = doc.get_metadata_sheet();
+
+            assert_eq!(sheet1.title, sheet2.title);
+            assert_eq!(sheet1.creator, sheet2.creator);
+            assert_eq!(sheet1.language, sheet2.language);
+            assert_eq!(sheet1.identifier, sheet2.identifier);
+            assert_eq!(sheet1.date, sheet2.date);
+        }
+    }
 }

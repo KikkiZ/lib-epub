@@ -256,7 +256,7 @@ pub fn adobe_font_encryption(data: &[u8], key: &str) -> Vec<u8> {
     let limit = cmp::min(1024, data.len());
 
     for (index, byte) in obfuscated_data.iter_mut().take(limit).enumerate() {
-        *byte ^= key.as_bytes()[index % 16];
+        *byte ^= key.as_bytes()[index % key.len()];
     }
 
     obfuscated_data
@@ -546,7 +546,7 @@ impl<'a> Iterator for SearchElementsByNameIter<'a> {
 /// XML parser used to parse XML content and build an XML element tree
 pub struct XmlReader {}
 
-#[allow(unused)]
+// #[allow(unused)]
 impl XmlReader {
     /// Parses an XML from string and builds the root element
     ///
@@ -692,11 +692,11 @@ impl XmlReader {
         root.ok_or(EpubError::EmptyDataError)
     }
 
-    /// Parse XML from bytes and builds the root element
-    pub fn parse_bytes(bytes: Vec<u8>) -> Result<XmlElement, EpubError> {
-        let content = bytes.decode()?;
-        Self::parse(&content)
-    }
+    // Parse XML from bytes and builds the root element
+    // pub fn parse_bytes(bytes: Vec<u8>) -> Result<XmlElement, EpubError> {
+    //     let content = bytes.decode()?;
+    //     Self::parse(&content)
+    // }
 
     /// Assign namespace to element recursively
     ///
@@ -722,7 +722,10 @@ impl XmlReader {
 mod tests {
     use crate::{
         error::EpubError,
-        utils::{DecodeBytes, NormalizeWhitespace},
+        utils::{
+            DecodeBytes, NormalizeWhitespace, adobe_font_dencryption, adobe_font_encryption,
+            idpf_font_dencryption, idpf_font_encryption,
+        },
     };
 
     /// Test with empty data
@@ -804,6 +807,143 @@ mod tests {
         // Test for String
         let text_string = String::from("  Hello,\tWorld!\n\nRust  ");
         let normalized = text_string.normalize_whitespace();
+
         assert_eq!(normalized, "Hello, World! Rust");
+    }
+
+    #[test]
+    fn test_idpf_font_encryption_empty_data() {
+        let data = vec![];
+        let key = "test-key";
+        let result = idpf_font_encryption(&data, key);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_idpf_font_encryption_data_less_than_1040() {
+        let data = vec![0x01, 0x02, 0x03, 0x04, 0x05];
+        let key = "test-key";
+        let encrypted = idpf_font_encryption(&data, key);
+        let decrypted = idpf_font_dencryption(&encrypted, key);
+
+        assert_eq!(decrypted, data);
+    }
+
+    #[test]
+    fn test_idpf_font_encryption_data_greater_than_1040() {
+        let data = (0..2048).map(|i| i as u8).collect::<Vec<_>>();
+        let key = "test-key-12345";
+        let encrypted = idpf_font_encryption(&data, key);
+        let decrypted = idpf_font_dencryption(&encrypted, key);
+
+        assert_eq!(decrypted, data);
+        assert_ne!(&encrypted[..1040], &data[..1040]);
+        assert_eq!(&encrypted[1040..], &data[1040..]);
+    }
+
+    #[test]
+    fn test_idpf_font_encryption_decryption_inverse() {
+        let data = b"Test font data for IDPF encryption verification".to_vec();
+        let key = "epub-id-12345";
+        let encrypted = idpf_font_encryption(&data, key);
+        let decrypted = idpf_font_dencryption(&encrypted, key);
+
+        assert_eq!(decrypted, data);
+        assert_ne!(encrypted, data);
+    }
+
+    #[test]
+    fn test_idpf_font_encryption_different_keys_produce_different_results() {
+        let data = b"Same data for all keys test".to_vec();
+        let key1 = "key-one";
+        let key2 = "key-two";
+        let encrypted1 = idpf_font_encryption(&data, key1);
+        let encrypted2 = idpf_font_encryption(&data, key2);
+
+        assert_ne!(encrypted1, encrypted2);
+    }
+
+    #[test]
+    fn test_idpf_font_encryption_same_key_twice_reverses() {
+        let data = b"Double encryption test data".to_vec();
+        let key = "reversible-key";
+        let once = idpf_font_encryption(&data, key);
+        let twice = idpf_font_encryption(&once, key);
+
+        assert_eq!(twice, data);
+    }
+
+    #[test]
+    fn test_adobe_font_encryption_empty_data() {
+        let data = vec![];
+        let key = "test-key-123456";
+        let result = adobe_font_encryption(&data, key);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_adobe_font_encryption_data_less_than_1024() {
+        let data = vec![0x10, 0x20, 0x30, 0x40, 0x50];
+        let key = "1234567890123456";
+        let encrypted = adobe_font_encryption(&data, key);
+        let decrypted = adobe_font_dencryption(&encrypted, key);
+
+        assert_eq!(decrypted, data);
+    }
+
+    #[test]
+    fn test_adobe_font_encryption_data_greater_than_1024() {
+        let data: Vec<u8> = (0..2048).map(|i| i as u8).collect();
+        let key = "adobe-key-16byte";
+        let encrypted = adobe_font_encryption(&data, key);
+        let decrypted = adobe_font_dencryption(&encrypted, key);
+
+        assert_eq!(decrypted, data);
+        assert_ne!(&encrypted[..1024], &data[..1024]);
+        assert_eq!(&encrypted[1024..], &data[1024..]);
+    }
+
+    #[test]
+    fn test_adobe_font_encryption_decryption_inverse() {
+        let data = b"Test font data for Adobe encryption verification".to_vec();
+        let key = "1234567890123456";
+        let encrypted = adobe_font_encryption(&data, key);
+        let decrypted = adobe_font_dencryption(&encrypted, key);
+
+        assert_eq!(decrypted, data);
+        assert_ne!(encrypted, data);
+    }
+
+    #[test]
+    fn test_adobe_font_encryption_different_keys_produce_different_results() {
+        let data = b"Same data for all keys test".to_vec();
+        let key1 = "1234567890123456";
+        let key2 = "abcdefghijklmnop";
+        let encrypted1 = adobe_font_encryption(&data, key1);
+        let encrypted2 = adobe_font_encryption(&data, key2);
+
+        assert_ne!(encrypted1, encrypted2);
+    }
+
+    #[test]
+    fn test_adobe_font_encryption_same_key_twice_reverses() {
+        let data = b"Double encryption test data".to_vec();
+        let key = "1234567890123456";
+        let once = adobe_font_encryption(&data, key);
+        let twice = adobe_font_encryption(&once, key);
+
+        assert_eq!(twice, data);
+    }
+
+    #[test]
+    fn test_adobe_font_encryption_key_length_handling() {
+        let data = b"Test data".to_vec();
+        let key = "short";
+        let encrypted = adobe_font_encryption(&data, key);
+        let decrypted = adobe_font_dencryption(&encrypted, key);
+
+        assert_eq!(decrypted, data);
     }
 }
