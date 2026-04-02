@@ -25,7 +25,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-lib-epub = "0.2.1"
+lib-epub = "0.3.0"
 ```
 
 ## Quick Start
