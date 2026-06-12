@@ -31,7 +31,7 @@ use std::{
     },
 };
 
-#[cfg(not(feature = "no-indexmap"))]
+#[cfg(feature = "indexmap")]
 use indexmap::IndexMap;
 use zip::{ZipArchive, result::ZipError};
 
@@ -110,7 +110,7 @@ pub struct EpubDoc<R: Read + Seek + Send> {
     /// By default, this field uses [`IndexMap`] to preserve the original declaration
     /// order from the OPF file, as recommended by the EPUB specification.
     ///
-    /// To reduce dependencies, you can enable the `no-indexmap` feature to use
+    /// To reduce dependencies, you can disable the `indexmap` feature to use
     /// [`HashMap`] instead. Note that this will not preserve the manifest order.
     ///
     /// ## EPUB Specification
@@ -120,9 +120,9 @@ pub struct EpubDoc<R: Read + Seek + Send> {
     /// > The order of `item` elements within the manifest is significant for
     /// > fallback chain processing and should be preserved when processing
     /// > the publication.
-    #[cfg(not(feature = "no-indexmap"))]
+    #[cfg(feature = "indexmap")]
     pub manifest: IndexMap<String, ManifestItem>,
-    #[cfg(feature = "no-indexmap")]
+    #[cfg(not(feature = "indexmap"))]
     pub manifest: HashMap<String, ManifestItem>,
 
     /// Physical reading order of publications extracted from OPF
@@ -217,9 +217,9 @@ impl<R: Read + Seek + Send> EpubDoc<R> {
             metadata: vec![],
             metadata_link: vec![],
 
-            #[cfg(feature = "no-indexmap")]
+            #[cfg(not(feature = "indexmap"))]
             manifest: HashMap::new(),
-            #[cfg(not(feature = "no-indexmap"))]
+            #[cfg(feature = "indexmap")]
             manifest: IndexMap::new(),
 
             spine: vec![],
@@ -349,9 +349,9 @@ impl<R: Read + Seek + Send> EpubDoc<R> {
     /// - `manifest_element`: A reference to the `<manifest>` element in the OPF file
     fn parse_manifest(&mut self, manifest_element: &XmlElement) -> Result<(), EpubError> {
         let estimated_items = manifest_element.children().count();
-        #[cfg(feature = "no-indexmap")]
+        #[cfg(not(feature = "indexmap"))]
         let mut resources = HashMap::with_capacity(estimated_items);
-        #[cfg(not(feature = "no-indexmap"))]
+        #[cfg(feature = "indexmap")]
         let mut resources = IndexMap::with_capacity(estimated_items);
 
         for element in manifest_element.children() {
