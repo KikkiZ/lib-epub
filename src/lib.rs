@@ -48,7 +48,7 @@
 //! - `content-builder`: Enable `lib_epub::builder::content`, provides structs and trait
 //!   related to building EPUB content documents. Enabling this feature will turn on
 //!   the `builder` feature by default.
-//! - `no-indexmap`: Remove the dependency on the external crate `IndexMap`. This dependency
+//! - `indexmap`: Use the external crate `IndexMap` for resource tracking. This dependency
 //!   is primarily used to ensure the order of resources in the manifest, as recommended
 //!   by the EPUB specification.
 

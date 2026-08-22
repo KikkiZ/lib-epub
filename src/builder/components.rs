@@ -1,4 +1,4 @@
-#[cfg(feature = "no-indexmap")]
+#[cfg(not(feature = "indexmap"))]
 use std::collections::HashMap;
 #[cfg(feature = "content-builder")]
 use std::io::Read;
@@ -8,7 +8,7 @@ use std::{
 };
 
 use chrono::{SecondsFormat, Utc};
-#[cfg(not(feature = "no-indexmap"))]
+#[cfg(feature = "indexmap")]
 use indexmap::IndexMap;
 use infer::Infer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
@@ -272,9 +272,9 @@ pub struct ManifestBuilder {
     rootfile: Option<String>,
 
     /// Manifest items stored in a map keyed by ID
-    #[cfg(feature = "no-indexmap")]
+    #[cfg(not(feature = "indexmap"))]
     pub(crate) manifest: HashMap<String, ManifestItem>,
-    #[cfg(not(feature = "no-indexmap"))]
+    #[cfg(feature = "indexmap")]
     pub(crate) manifest: IndexMap<String, ManifestItem>,
 }
 
@@ -287,9 +287,9 @@ impl ManifestBuilder {
         Self {
             temp_dir: temp_dir.as_ref().to_path_buf(),
             rootfile: None,
-            #[cfg(feature = "no-indexmap")]
+            #[cfg(not(feature = "indexmap"))]
             manifest: HashMap::new(),
-            #[cfg(not(feature = "no-indexmap"))]
+            #[cfg(feature = "indexmap")]
             manifest: IndexMap::new(),
         }
     }

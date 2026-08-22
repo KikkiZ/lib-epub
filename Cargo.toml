@@ -13,7 +13,7 @@ rust-version = "1.85"
 
 [package.metadata]
 authors = ["KikkiZ <zhangyozh@foxmail.com>"]
-docs.rs = { features = ["builder", "content-builder"] }
+docs.rs = { features = ["builder", "content-builder", "indexmap"] }
 
 [dependencies]
 chrono = { version = "0.4.43", optional = true }
@@ -34,6 +34,6 @@ flate2 = "1.1.9"
 [features]
 default = ["indexmap"]
 
-builder = ["chrono", "infer", "walkdir"]
+builder = ["dep:chrono", "dep:infer", "dep:walkdir"]
 content-builder = ["builder"]
-no-indexmap = []
+indexmap = ["dep:indexmap"]
