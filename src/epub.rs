@@ -1151,7 +1151,7 @@ impl<R: Read + Seek + Send> EpubDoc<R> {
                     let value = value.to_string().normalize_whitespace();
 
                     MetadataRefinement {
-                        refines: id.clone().unwrap(),
+                        refines: id.clone().unwrap_or_default(),
                         property,
                         value,
                         lang: None,
