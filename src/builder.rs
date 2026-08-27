@@ -559,8 +559,20 @@ impl EpubBuilder<EpubVersion3> {
 
     /// Creates the `navigation document`
     ///
+    /// If the manifest already contains an item with the `nav` property, the
+    /// navigation document is considered user-provided and generation is skipped
+    /// entirely.
+    ///
     /// An error will occur if navigation information is not initialized.
     fn make_navigation_document(&mut self) -> Result<(), EpubError> {
+        for (_, manifest_item) in &self.manifest().manifest {
+            if let Some(properties) = &manifest_item.properties
+                && properties.split(' ').any(|property| property == "nav")
+            {
+                return Ok(());
+            }
+        }
+
         if self.catalog.is_empty() {
             return Err(EpubBuilderError::NavigationInfoUninitalized.into());
         }
@@ -1054,6 +1066,147 @@ mod tests {
 
             builder.add_catalog_item(NavPoint::new("test"));
             assert!(builder.make_navigation_document().is_ok());
+        }
+
+        #[test]
+        fn test_make_navigation_document_skips_with_existing_nav() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+            builder.manifest.manifest.insert(
+                "custom-nav".to_string(),
+                ManifestItem::new("custom-nav", "nav.xhtml")
+                    .unwrap()
+                    .append_property("nav")
+                    .build(),
+            );
+
+            assert!(builder.make_navigation_document().is_ok());
+
+            assert!(!builder.temp_dir.join("nav.xhtml").exists());
+            assert!(!builder.manifest.manifest.contains_key("nav"));
+            assert_eq!(builder.manifest.manifest.len(), 1);
+            assert_eq!(
+                builder
+                    .manifest
+                    .manifest
+                    .get("custom-nav")
+                    .unwrap()
+                    .properties,
+                Some("nav".to_string())
+            );
+        }
+
+        #[test]
+        fn test_make_navigation_document_skips_with_multiple_properties() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+            builder.manifest.manifest.insert(
+                "custom-nav".to_string(),
+                ManifestItem::new("custom-nav", "nav.xhtml")
+                    .unwrap()
+                    .append_property("cover-image")
+                    .append_property("nav")
+                    .build(),
+            );
+
+            assert!(builder.make_navigation_document().is_ok());
+            assert!(!builder.temp_dir.join("nav.xhtml").exists());
+        }
+
+        #[test]
+        fn test_make_navigation_document_does_not_match_substring() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+            builder.manifest.manifest.insert(
+                "custom-nav".to_string(),
+                ManifestItem::new("custom-nav", "nav.xhtml")
+                    .unwrap()
+                    .append_property("navigation")
+                    .build(),
+            );
+
+            assert_eq!(
+                builder.make_navigation_document().unwrap_err(),
+                EpubBuilderError::NavigationInfoUninitalized.into()
+            );
+
+            builder.add_catalog_item(NavPoint::new("test"));
+            assert!(builder.make_navigation_document().is_ok());
+            assert!(builder.temp_dir.join("nav.xhtml").exists());
+            assert!(builder.manifest.manifest.contains_key("nav"));
+        }
+
+        #[test]
+        fn test_make_navigation_document_multiple_nav_items_deferred_to_validation() {
+            let mut builder = EpubBuilder::<EpubVersion3>::new().unwrap();
+
+            builder.manifest.manifest.insert(
+                "nav1".to_string(),
+                ManifestItem::new("nav1", "nav1.xhtml")
+                    .unwrap()
+                    .append_property("nav")
+                    .build(),
+            );
+            builder.manifest.manifest.insert(
+                "nav2".to_string(),
+                ManifestItem::new("nav2", "nav2.xhtml")
+                    .unwrap()
+                    .append_property("nav")
+                    .build(),
+            );
+
+            assert!(builder.make_navigation_document().is_ok());
+
+            let result = builder.manifest.validate();
+            assert!(result.is_err());
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Epub builder error: There are too many items with 'nav' property in the manifest."
+            );
+        }
+
+        #[test]
+        fn test_make_with_custom_nav_document() {
+            let mut builder = test_helpers::create_full_builder();
+
+            builder
+                .add_manifest(
+                    "./test_case/Overview.xhtml",
+                    ManifestItem {
+                        id: "test".to_string(),
+                        path: PathBuf::from("test.xhtml"),
+                        mime: String::new(),
+                        properties: None,
+                        fallback: None,
+                    },
+                )
+                .unwrap();
+
+            builder
+                .add_manifest(
+                    "./test_case/nav.xhtml",
+                    ManifestItem::new("custom-nav", "nav.xhtml")
+                        .unwrap()
+                        .append_property("nav")
+                        .build(),
+                )
+                .unwrap();
+
+            let file = env::temp_dir().join(format!("{}.epub", local_time()));
+            assert!(builder.make(&file).is_ok());
+
+            let doc = EpubDoc::new(&file).unwrap();
+            assert!(doc.manifest.contains_key("custom-nav"));
+            assert_eq!(
+                doc.manifest
+                    .get("custom-nav")
+                    .unwrap()
+                    .properties
+                    .as_deref(),
+                Some("nav")
+            );
+            assert!(!doc.manifest.contains_key("nav"));
+            assert_eq!(doc.manifest.len(), 2);
         }
 
         #[test]

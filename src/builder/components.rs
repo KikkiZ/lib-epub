@@ -507,7 +507,7 @@ impl ManifestBuilder {
             .values()
             .filter(|&item| {
                 if let Some(properties) = &item.properties {
-                    properties.split(" ").any(|property| property == "nav")
+                    properties.split(' ').any(|property| property == "nav")
                 } else {
                     false
                 }
